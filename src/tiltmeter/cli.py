@@ -6,8 +6,10 @@ The command-line interface:
   tiltmeter status     — show how many articles we hold per outlet
   tiltmeter snapshot   — freeze a window of the corpus into a manifest
   tiltmeter reference  — fetch congressional floor speeches (the D5 anchor)
+  tiltmeter run        — manifest → ratings.json + evidence pages
+  tiltmeter serve      — read-only HTTP API over computed releases
 
-Later milestones add: run, validate, report.
+Later milestones add: validate (the M3 gate).
 """
 
 import argparse
@@ -61,6 +63,39 @@ def cmd_reference(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_run(args: argparse.Namespace) -> int:
+    from tiltmeter import __version__, report, score, snapshot
+
+    manifest = snapshot.load(args.manifest)
+    conn = db.connect(args.db)
+    ratings = score.compute(conn, manifest, __version__)
+    ratings_path = score.write(ratings, args.out)
+    stories, matrix, articles = score.story_details(conn, manifest)
+    stories_path = score.write_stories(score.stories_json(stories, articles, manifest), args.out)
+    report_dir = report.write(report.render(ratings, stories, matrix, articles), ratings, args.out)
+
+    print(f"ratings: {ratings_path}\nstories: {stories_path}\nevidence: {report_dir}/")
+    o = ratings["orientation"]
+    flag = "" if o["reliable"] else "  [UNRELIABLE — do not interpret]"
+    print(
+        f"stories: {ratings['n_stories']}, axis inertia {ratings['axis_inertia_share']:.0%}, "
+        f"orientation rho {o['correlation']:+.2f}{flag}"
+    )
+    for entry in ratings["outlets"]:
+        print(
+            f"  {entry['score']:+.3f}  [{entry['ci_low']:+.3f} {entry['ci_high']:+.3f}]"
+            f"  {entry['outlet']}"
+        )
+    return 0
+
+
+def cmd_serve(args: argparse.Namespace) -> int:
+    from tiltmeter import serve
+
+    serve.run(args.releases, args.host, args.port)
+    return 0
+
+
 def cmd_status(args: argparse.Namespace) -> int:
     conn = db.connect(args.db)
     rows = db.outlet_counts(conn)
@@ -102,6 +137,17 @@ def main(argv: list[str] | None = None) -> int:
     p_reference.add_argument("--days", type=int, default=10, help="session days to collect")
     p_reference.add_argument("--congress", type=int, default=119)
     p_reference.set_defaults(func=cmd_reference)
+
+    p_run = sub.add_parser("run", help="compute ratings + evidence pages from a manifest")
+    p_run.add_argument("--manifest", required=True, help="path to a snapshot manifest")
+    p_run.add_argument("--out", default="releases", help="output directory")
+    p_run.set_defaults(func=cmd_run)
+
+    p_serve = sub.add_parser("serve", help="read-only HTTP API over computed releases")
+    p_serve.add_argument("--releases", default="releases")
+    p_serve.add_argument("--host", default="0.0.0.0")
+    p_serve.add_argument("--port", type=int, default=8477)
+    p_serve.set_defaults(func=cmd_serve)
 
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")

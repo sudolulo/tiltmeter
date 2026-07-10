@@ -1,0 +1,15 @@
+# API serving + one-shot pipeline commands.
+#   docker compose up -d                                # serve ratings API :8477
+#   docker compose run --rm tiltmeter ingest            # poll feeds once
+#   docker compose run --rm tiltmeter snapshot --start ... --end ...
+#   docker compose run --rm tiltmeter run --manifest releases/manifest-<id>.json
+services:
+  tiltmeter:
+    build: .
+    image: tiltmeter:latest
+    ports:
+      - "8477:8477"
+    volumes:
+      - ./data:/app/data
+      - ./releases:/app/releases
+    restart: unless-stopped

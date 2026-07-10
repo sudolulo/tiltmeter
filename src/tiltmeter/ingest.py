@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 import feedparser
 import trafilatura
 import yaml
+from trafilatura.settings import use_config
 
 from tiltmeter import db
 
@@ -25,6 +26,13 @@ USER_AGENT = "tiltmeter/0.1 (+https://github.com/sudolulo/tiltmeter; research co
 # Floor chosen to stay under WAF/rate-limit radar on a single domain; a block
 # would cost us corpus coverage, which is worth more than ingest speed.
 FETCH_DELAY_SECONDS = 0.2
+# Outlets that block us (e.g. paywalled WaPo) time out; cap the wait so one
+# blocked outlet can't stall a whole ingest run. Headline+summary still land.
+FETCH_TIMEOUT_SECONDS = 10
+
+_FETCH_CONFIG = use_config()
+_FETCH_CONFIG.set("DEFAULT", "DOWNLOAD_TIMEOUT", str(FETCH_TIMEOUT_SECONDS))
+_FETCH_CONFIG.set("DEFAULT", "USER_AGENTS", USER_AGENT)
 
 
 def load_outlets(config_path: str) -> list[dict]:
@@ -36,7 +44,7 @@ def load_outlets(config_path: str) -> list[dict]:
 
 def fetch_article_text(url: str) -> str | None:
     """Download one article page and extract its readable text."""
-    html = trafilatura.fetch_url(url)
+    html = trafilatura.fetch_url(url, config=_FETCH_CONFIG)
     if html is None:
         return None
     return trafilatura.extract(html, include_comments=False, include_tables=False)

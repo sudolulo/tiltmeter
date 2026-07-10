@@ -47,7 +47,31 @@ deliberately refusing static outlet labels. It trades reproducibility for covera
 putting an LLM in the judgment loop (see METHODOLOGY.md D8 for why we refuse that
 trade).
 
-### 1.c Why re-run the experiment now
+### 1.c The adjacent living projects (surveyed 2026-07-10)
+
+- **Media Cloud** (MIT/Northeastern, 2011–) — open-source, open-data media analysis
+  infrastructure: 2B+ stories, 60k+ sources, actively maintained. Publishes no lean
+  ratings by design. The existence proof that open news-corpus infrastructure can
+  live for 15 years; not an instrument.
+- **The Factual** (2019–2022) — algorithmic credibility scoring; acquired by Yahoo,
+  method proprietary throughout.
+- **Improve the News → Verity** (Tegmark's ITN Foundation, 2020–) — ML article
+  aggregation with bias classification; nonprofit, but methodology not open or
+  reproducible.
+- **Open-source classifier repos** (Baly et al.'s News-Media-Reliability and
+  Article-Bias-Prediction; assorted GitHub projects) — nearly all share one
+  structural flaw: they *train on incumbent-rater labels* (MBFC, AllSides). Their
+  ground truth is the panels, so at best they produce a cheaper copy of the panels —
+  they can never meaningfully disagree, because agreement is their loss function.
+  See METHODOLOGY.md D7 for how tiltmeter avoids this circularity.
+- **Wikipedia's perennial-sources list** — transparent *deliberation* about source
+  reliability, but human judgment all the way down.
+
+The empty spot in this landscape: independent measurement + no judge in the loop +
+versioned living dataset + layman-traceable evidence. tiltmeter is an attempt to
+occupy exactly that intersection.
+
+### 1.d Why re-run the experiment now
 
 Three things changed. Sentence embeddings made cross-outlet story clustering cheap
 and good — the expensive part of selection-bias measurement is now a commodity.

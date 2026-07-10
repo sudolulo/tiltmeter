@@ -1,0 +1,81 @@
+# Incumbent-rater reference ratings — VALIDATION ONLY (METHODOLOGY.md D7).
+# These values are never an input to scoring; they exist so the M3 gate can
+# compare tiltmeter's ordering against the incumbents' orderings.
+#
+# Integrity rules:
+# - every value carries its source, retrieval date, and a verified flag
+# - verified: false means "provisional, transcribed from secondary knowledge,
+#   NOT yet confirmed on the rater's own site" — the M3 validation run MUST
+#   NOT be reported against unverified values; re-verify on-site first
+#   (allsides.com blocks automated fetches: verify manually in a browser)
+# - allsides scale: Left / Lean Left / Center / Lean Right / Right,
+#   mapped for correlation as -2 / -1 / 0 / +1 / +2 (news section rating,
+#   never the opinion-section rating)
+# - ad_fontes scale: numeric bias score (-42..+42), from adfontesmedia.com
+#   source pages; null = not yet transcribed
+
+ratings:
+  cs-monitor:
+    allsides: {value: Center, verified: true, retrieved: 2026-07-10,
+               note: "confirmed via AllSides source page, high confidence, July 2026"}
+    ad_fontes: {value: null}
+  pbs-newshour:
+    allsides: {value: Center, verified: false, retrieved: 2026-07-10}
+    ad_fontes: {value: null}
+  npr:
+    allsides: {value: Lean Left, verified: false, retrieved: 2026-07-10}
+    ad_fontes: {value: null}
+  axios:
+    allsides: {value: Lean Left, verified: false, retrieved: 2026-07-10}
+    ad_fontes: {value: null}
+  the-hill:
+    allsides: {value: Center, verified: false, retrieved: 2026-07-10}
+    ad_fontes: {value: null}
+  nytimes:
+    allsides: {value: Lean Left, verified: false, retrieved: 2026-07-10}
+    ad_fontes: {value: null}
+  washington-post:
+    allsides: {value: Lean Left, verified: false, retrieved: 2026-07-10}
+    ad_fontes: {value: null}
+  cnn:
+    allsides: {value: Lean Left, verified: false, retrieved: 2026-07-10,
+               note: "CNN web news moved between Lean Left and Left in past years; verify current"}
+    ad_fontes: {value: null}
+  nbc-news:
+    allsides: {value: Lean Left, verified: false, retrieved: 2026-07-10}
+    ad_fontes: {value: null}
+  huffpost:
+    allsides: {value: Left, verified: false, retrieved: 2026-07-10}
+    ad_fontes: {value: null}
+  mother-jones:
+    allsides: {value: Left, verified: false, retrieved: 2026-07-10}
+    ad_fontes: {value: null}
+  the-nation:
+    allsides: {value: Left, verified: false, retrieved: 2026-07-10}
+    ad_fontes: {value: null}
+  wsj:
+    allsides: {value: Center, verified: false, retrieved: 2026-07-10,
+               note: "news section; WSJ Opinion is rated separately (Lean Right/Right)"}
+    ad_fontes: {value: null}
+  national-review:
+    allsides: {value: Right, verified: false, retrieved: 2026-07-10}
+    ad_fontes: {value: null}
+  washington-examiner:
+    allsides: {value: Lean Right, verified: false, retrieved: 2026-07-10}
+    ad_fontes: {value: null}
+  ny-post:
+    allsides: {value: Lean Right, verified: false, retrieved: 2026-07-10}
+    ad_fontes: {value: null}
+  fox-news:
+    allsides: {value: Right, verified: false, retrieved: 2026-07-10,
+               note: "web news rating; verify current after July 2025 AllSides review"}
+    ad_fontes: {value: null}
+  daily-wire:
+    allsides: {value: Right, verified: false, retrieved: 2026-07-10}
+    ad_fontes: {value: null}
+  breitbart:
+    allsides: {value: Right, verified: false, retrieved: 2026-07-10}
+    ad_fontes: {value: null}
+  newsmax:
+    allsides: {value: Right, verified: false, retrieved: 2026-07-10}
+    ad_fontes: {value: null}

@@ -37,9 +37,8 @@ ratings:
   washington-post:
     allsides: {value: Lean Left, verified: false, retrieved: 2026-07-10}
     ad_fontes: {value: null}
-  cnn:
-    allsides: {value: Lean Left, verified: false, retrieved: 2026-07-10,
-               note: "CNN web news moved between Lean Left and Left in past years; verify current"}
+  cbs-news:
+    allsides: {value: Lean Left, verified: false, retrieved: 2026-07-10}
     ad_fontes: {value: null}
   nbc-news:
     allsides: {value: Lean Left, verified: false, retrieved: 2026-07-10}
@@ -53,9 +52,8 @@ ratings:
   the-nation:
     allsides: {value: Left, verified: false, retrieved: 2026-07-10}
     ad_fontes: {value: null}
-  wsj:
-    allsides: {value: Center, verified: false, retrieved: 2026-07-10,
-               note: "news section; WSJ Opinion is rated separately (Lean Right/Right)"}
+  newsweek:
+    allsides: {value: Center, verified: false, retrieved: 2026-07-10}
     ad_fontes: {value: null}
   national-review:
     allsides: {value: Right, verified: false, retrieved: 2026-07-10}

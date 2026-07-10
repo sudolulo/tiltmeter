@@ -82,18 +82,17 @@ outlets:
       source: https://en.wikipedia.org/wiki/The_Washington_Post
       retrieved: 2026-07-10
       verified: false
-  - name: cnn
-    homepage: https://www.cnn.com
-    feed: http://rss.cnn.com/rss/cnn_allpolitics.rss
+  - name: cbs-news
+    homepage: https://www.cbsnews.com
+    feed: https://www.cbsnews.com/latest/rss/politics
     ownership:
-      owner: Warner Bros. Discovery
+      owner: Paramount (a Skydance Corporation company)
       type: public-company
-      note: in flux — WBD sale to Paramount Skydance DOJ-approved 2026-06-12;
-        CNN slated for the Discovery Global linear-networks entity; re-verify
-        on completion
-      source: https://www.pbs.org/newshour/nation/cnn-and-fellow-cable-networks-are-in-limbo-amid-takeover-bids-of-warner-bros-discovery
+      note: Paramount-Skydance merger closed 2025; replaces CNN in the sample
+        (CNN legacy RSS serves 2022-2024 articles; swap recorded in CHANGELOG)
+      source: https://en.wikipedia.org/wiki/CBS_News
       retrieved: 2026-07-10
-      verified: true
+      verified: false
   - name: nbc-news
     homepage: https://www.nbcnews.com
     feed: https://feeds.nbcnews.com/nbcnews/public/politics
@@ -134,17 +133,15 @@ outlets:
       source: https://en.wikipedia.org/wiki/The_Nation
       retrieved: 2026-07-10
       verified: false
-  # WSJ's politics feed is dead; the working feed is general news (not the
-  # Opinion feed — news and opinion are rated separately by every incumbent
-  # rater, and we collect news). Topic-mix tradeoff noted in METHODOLOGY D9.
-  - name: wsj
-    homepage: https://www.wsj.com
-    feed: https://feeds.a.dj.com/rss/RSSWorldNews.xml
+  - name: newsweek
+    homepage: https://www.newsweek.com
+    feed: https://www.newsweek.com/rss
     ownership:
-      owner: Dow Jones & Company (News Corp)
-      type: public-company
-      note: NASDAQ NWSA; Murdoch family trust voting control
-      source: https://en.wikipedia.org/wiki/The_Wall_Street_Journal
+      owner: Newsweek Publishing LLC (Dev Pragad, Johnathan Davis)
+      type: private-company
+      note: replaces WSJ in the sample — Dow Jones froze all public RSS feeds
+        in Jan 2025 (swap recorded in CHANGELOG); general feed, no politics feed
+      source: https://en.wikipedia.org/wiki/Newsweek
       retrieved: 2026-07-10
       verified: false
   - name: national-review

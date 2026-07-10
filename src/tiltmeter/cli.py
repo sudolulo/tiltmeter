@@ -92,7 +92,7 @@ def cmd_run(args: argparse.Namespace) -> int:
 def cmd_serve(args: argparse.Namespace) -> int:
     from tiltmeter import serve
 
-    serve.run(args.releases, args.host, args.port)
+    serve.run(args.releases, args.host, args.port, db_path=args.db)
     return 0
 
 

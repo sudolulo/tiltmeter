@@ -8,6 +8,34 @@ requires a version bump and, if it changes methodology, a decision record in
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-07-10
+
+Unattended-operation hardening: the deployment must run two weeks with no
+human attention and produce trustworthy corpus + fresh dry-run ratings.
+
+### Added
+
+- `/health` now reports per-outlet hours since the last collected article and
+  a `stale_outlets` list (>36h = two missed collection cycles); status flips
+  to `degraded` so one HTTP request reveals a silently dead feed.
+- CI publishes version-tagged images (`ghcr.io/sudolulo/tiltmeter:<version>`)
+  alongside `latest`, version read from pyproject.
+
+### Changed
+
+- Outlet swaps after the pre-wait feed audit (both recorded per D4 policy):
+  **CNN → CBS News** (CNN's legacy RSS serves 2022–2024 articles) and
+  **WSJ → Newsweek** (Dow Jones froze all public feeds Jan 2025). Both
+  replacements preserve the vacated spectrum slot per AllSides
+  (Lean Left / Center). Reference ratings and ownership entries updated.
+- Embedding model cache baked at `HF_HOME=/opt/hf-cache`, world-readable, so
+  the pipeline runs offline under any uid (deployments run as non-root).
+
+### Fixed
+
+- `/outlets` crashed on YAML date fields (json.dumps on date objects killed
+  the response mid-flight); serialized with default=str and pinned by test.
+
 ## [0.3.0] - 2026-07-10
 
 ### Added

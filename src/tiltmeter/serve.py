@@ -22,6 +22,8 @@ the maximum.
 import json
 import logging
 import re
+import sqlite3
+from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -30,6 +32,36 @@ log = logging.getLogger("tiltmeter.serve")
 SNAPSHOT_ID_RE = re.compile(r"^\d{4}-\d{2}-\d{2}_\d{4}-\d{2}-\d{2}$")
 OUTLET_PAGE_RE = re.compile(r"^[a-z0-9-]+\.md$|^index\.md$")
 DEFAULT_PORT = 8477
+STALE_AFTER_HOURS = 36.0  # two missed 6h collection cycles plus slack
+
+
+def collection_health(db_path: Path) -> dict | None:
+    """Hours since each outlet last yielded an article — the monitoring hook.
+
+    A silently dead feed is the main way two unattended weeks go wrong; this
+    makes it one HTTP request to notice. Returns None when no corpus exists.
+    """
+    if not db_path.is_file():
+        return None
+    conn = sqlite3.connect(db_path)
+    try:
+        rows = conn.execute(
+            "SELECT outlet, MAX(fetched_at) FROM articles GROUP BY outlet"
+        ).fetchall()
+    except sqlite3.OperationalError:
+        return None
+    finally:
+        conn.close()
+    now = datetime.now(timezone.utc)
+    hours = {
+        outlet: round((now - datetime.fromisoformat(ts)).total_seconds() / 3600, 1)
+        for outlet, ts in rows
+        if ts
+    }
+    return {
+        "hours_since_last_article": dict(sorted(hours.items())),
+        "stale_outlets": sorted(o for o, h in hours.items() if h > STALE_AFTER_HOURS),
+    }
 
 
 def _ratings_ids(releases: Path) -> list[str]:
@@ -38,7 +70,7 @@ def _ratings_ids(releases: Path) -> list[str]:
     )
 
 
-def make_handler(releases: Path, outlets_config: Path | None = None):
+def make_handler(releases: Path, outlets_config: Path | None = None, db_path: Path | None = None):
     outlets_payload = None
     if outlets_config and outlets_config.is_file():
         import yaml
@@ -73,7 +105,12 @@ def make_handler(releases: Path, outlets_config: Path | None = None):
             ids = _ratings_ids(releases)
             match parts:
                 case ["health"]:
-                    self._json(200, {"status": "ok", "ratings": ids})
+                    payload = {"status": "ok", "ratings": ids}
+                    if db_path is not None:
+                        payload["collection"] = collection_health(db_path)
+                        if payload["collection"] and payload["collection"]["stale_outlets"]:
+                            payload["status"] = "degraded"
+                    self._json(200, payload)
                 case ["ratings"]:
                     self._json(200, {"snapshots": ids})
                 case ["ratings", "latest"] if ids:
@@ -106,10 +143,11 @@ def run(
     host: str = "0.0.0.0",
     port: int = DEFAULT_PORT,
     outlets_config: str | Path = "config/outlets.yaml",
+    db_path: str | Path = "data/tiltmeter.db",
 ) -> None:
     releases = Path(releases_dir)
     server = ThreadingHTTPServer(
-        (host, port), make_handler(releases, Path(outlets_config))
+        (host, port), make_handler(releases, Path(outlets_config), Path(db_path))
     )
     log.info("serving %s on %s:%d", releases, host, port)
     server.serve_forever()

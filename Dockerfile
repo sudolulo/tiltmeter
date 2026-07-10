@@ -23,8 +23,11 @@ COPY src ./src
 COPY config ./config
 RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen --no-dev
 
-# bake the pinned model so runs need no network and no HF account
-RUN /app/.venv/bin/python -c "from tiltmeter import embed; embed._load_model()"
+# bake the pinned model so runs need no network and no HF account; cache must
+# be world-readable because deployments run the pipeline as a non-root uid
+ENV HF_HOME=/opt/hf-cache
+RUN /app/.venv/bin/python -c "from tiltmeter import embed; embed._load_model()" \
+    && chmod -R a+rX /opt/hf-cache
 
 ENV PATH="/app/.venv/bin:$PATH"
 VOLUME ["/app/data", "/app/releases"]

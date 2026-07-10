@@ -63,6 +63,46 @@ def test_health_and_listing(api):
     assert headers["Access-Control-Allow-Origin"] == "*"
 
 
+def test_health_reports_stale_outlets(tmp_path):
+    """A feed that quietly dies must show up as degraded within one request."""
+    from datetime import datetime, timedelta, timezone
+
+    from tiltmeter import db as tdb
+
+    conn = tdb.connect(tmp_path / "corpus.db")
+    now = datetime.now(timezone.utc)
+    for outlet, age_hours in (("fresh-news", 2), ("dead-feed", 90)):
+        tdb.insert_article(
+            conn,
+            outlet=outlet,
+            url=f"https://example.com/{outlet}",
+            title="T",
+            published=None,
+            fetched_at=(now - timedelta(hours=age_hours)).isoformat(),
+            summary=None,
+            text="x",
+        )
+    conn.commit()
+
+    health = serve.collection_health(tmp_path / "corpus.db")
+    assert health["stale_outlets"] == ["dead-feed"]
+    assert health["hours_since_last_article"]["fresh-news"] < 3
+
+    server = ThreadingHTTPServer(
+        ("127.0.0.1", 0),
+        serve.make_handler(tmp_path, None, tmp_path / "corpus.db"),
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        status, body, _ = get(server.server_address[1], "/health")
+        payload = json.loads(body)
+        assert payload["status"] == "degraded"
+        assert payload["collection"]["stale_outlets"] == ["dead-feed"]
+    finally:
+        server.shutdown()
+
+
 def test_latest_is_newest_snapshot(api):
     status, body, _ = get(api, "/ratings/latest")
     assert status == 200

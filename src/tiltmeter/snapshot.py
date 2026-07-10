@@ -21,8 +21,10 @@ MANIFEST_VERSION = 1
 def _rows_in_window(conn: sqlite3.Connection, start: str, end: str) -> list[dict]:
     """All articles fetched within [start, end), ordered deterministically."""
     cur = conn.execute(
-        "SELECT outlet, url, title, published, fetched_at, content_hash FROM articles"
-        " WHERE fetched_at >= ? AND fetched_at < ? ORDER BY content_hash",
+        "SELECT o.name AS outlet, a.url, a.title, a.byline, a.published, a.fetched_at,"
+        " a.content_hash FROM articles a JOIN outlets o ON o.id = a.outlet_id"
+        " WHERE a.fetched_at >= ? AND a.fetched_at < ?"
+        " ORDER BY a.content_hash, a.url",
         (start, end),
     )
     cols = [c[0] for c in cur.description]

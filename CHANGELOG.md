@@ -8,6 +8,36 @@ requires a version bump and, if it changes methodology, a decision record in
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-07-10
+
+Storage architecture for the long haul (METHODOLOGY D11, ADR-0004): the
+dataset must stay one verifiable file as it grows for years.
+
+### Added
+
+- Content-addressed storage: every distinct text stored once,
+  zlib-compressed, keyed by its SHA-256 fingerprint. Wire copy syndicated
+  across outlets stores once. Measured on the real corpus: 12.2 MB → 6.3 MB.
+- Append-only custody chain: every ingest/reference batch appends a
+  hash-chained entry covering its item fingerprints; the v1→v2 migration
+  chains the entire backlog as a genesis batch. History cannot be rewritten
+  without breaking the chain.
+- `tiltmeter audit`: re-hashes every stored text, checks all references,
+  walks the chain; `--emit` writes a head summary. Chain head served at
+  `/custody`. Tamper scenarios (content edits, deletions, history rewrites,
+  log manipulation) covered by tests through a raw non-FK connection — the
+  realistic attacker path.
+- Outlet dimension table (provider data stored once), verbatim byline
+  capture (unrecoverable later; no signal uses them yet), HTML-stripped feed
+  summaries, URL canonicalization (tracking parameters removed; original
+  kept when it differed).
+
+### Changed
+
+- Automatic, transactional v1→v2 migration on first connect. Content
+  fingerprints preserved verbatim: every previously published manifest
+  remains verifiable against the migrated store. WAL journal mode enabled.
+
 ## [0.5.0] - 2026-07-10
 
 The M3 gate as code: on gate day the validation is one command.

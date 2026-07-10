@@ -1,7 +1,7 @@
 # Evidence: washington-post
 
 - **Score**: -0.037 (95% CI -0.898 … +0.785); negative = left, positive = right
-- **Snapshot**: 2026-07-10_2026-07-11 (corpus 626c32fd3570…), pipeline v0.3.0
+- **Snapshot**: 2026-07-10_2026-07-11 (corpus 626c32fd3570…), pipeline v0.5.0
 - **Coverage**: 7 of 63 cross-outlet stories
 - **Nearest neighbors**: pbs-newshour (-0.036), fox-news (-0.032), washington-examiner (-0.030)
 

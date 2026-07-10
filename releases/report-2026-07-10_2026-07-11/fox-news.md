@@ -1,7 +1,7 @@
 # Evidence: fox-news
 
 - **Score**: -0.032 (95% CI -0.607 … +0.570); negative = left, positive = right
-- **Snapshot**: 2026-07-10_2026-07-11 (corpus 626c32fd3570…), pipeline v0.3.0
+- **Snapshot**: 2026-07-10_2026-07-11 (corpus 626c32fd3570…), pipeline v0.5.0
 - **Coverage**: 9 of 63 cross-outlet stories
 - **Nearest neighbors**: washington-examiner (-0.030), pbs-newshour (-0.036), washington-post (-0.037)
 

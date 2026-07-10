@@ -1,7 +1,7 @@
 # Evidence: the-hill
 
 - **Score**: -0.047 (95% CI -0.371 … +0.263); negative = left, positive = right
-- **Snapshot**: 2026-07-10_2026-07-11 (corpus 626c32fd3570…), pipeline v0.3.0
+- **Snapshot**: 2026-07-10_2026-07-11 (corpus 626c32fd3570…), pipeline v0.5.0
 - **Coverage**: 12 of 63 cross-outlet stories
 - **Nearest neighbors**: npr (-0.049), breitbart (-0.045), the-nation (-0.044)
 

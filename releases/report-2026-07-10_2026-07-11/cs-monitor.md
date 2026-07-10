@@ -1,7 +1,7 @@
 # Evidence: cs-monitor
 
 - **Score**: +1.000 (95% CI -0.000 … +1.000); negative = left, positive = right
-- **Snapshot**: 2026-07-10_2026-07-11 (corpus 626c32fd3570…), pipeline v0.3.0
+- **Snapshot**: 2026-07-10_2026-07-11 (corpus 626c32fd3570…), pipeline v0.5.0
 - **Coverage**: 2 of 63 cross-outlet stories
 - **Nearest neighbors**: mother-jones (+0.452), axios (+0.032), nbc-news (+0.020)
 

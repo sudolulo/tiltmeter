@@ -72,13 +72,19 @@ def embed_hashes(conn: sqlite3.Connection, content_hashes: list[str]) -> np.ndar
 
     missing = [h for h in content_hashes if h not in cached]
     if missing:
+        from tiltmeter import db as tdb
+
         placeholders = ",".join("?" * len(missing))
         rows = conn.execute(
-            f"SELECT content_hash, title, text, summary FROM articles"
+            f"SELECT DISTINCT content_hash, summary FROM articles"
             f" WHERE content_hash IN ({placeholders})",
             missing,
         ).fetchall()
-        found = {r[0]: passage(r[1], r[2], r[3]) for r in rows}
+        found = {}
+        for chash, summary in rows:
+            title_text = tdb.get_article_text(conn, chash)
+            if title_text is not None:
+                found[chash] = passage(title_text[0], title_text[1], summary)
         absent = [h for h in missing if h not in found]
         if absent:
             raise ValueError(

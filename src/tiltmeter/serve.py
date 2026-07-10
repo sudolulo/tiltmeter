@@ -49,7 +49,8 @@ def collection_health(db_path: Path, configured: list[str] | None = None) -> dic
     conn = sqlite3.connect(db_path)
     try:
         rows = conn.execute(
-            "SELECT outlet, MAX(fetched_at) FROM articles GROUP BY outlet"
+            "SELECT o.name, MAX(a.fetched_at) FROM articles a"
+            " JOIN outlets o ON o.id = a.outlet_id GROUP BY o.name"
         ).fetchall()
     except sqlite3.OperationalError:
         return None
@@ -113,6 +114,20 @@ def make_handler(releases: Path, outlets_config: Path | None = None, db_path: Pa
             parts = [p for p in self.path.split("?")[0].split("/") if p]
             ids = _ratings_ids(releases)
             match parts:
+                case ["custody"] if db_path is not None and db_path.is_file():
+                    import sqlite3 as _sq
+
+                    from tiltmeter import db as tdb
+
+                    conn = _sq.connect(f"file:{db_path}?mode=ro", uri=True)
+                    try:
+                        head = tdb.custody_head(conn)
+                        n = conn.execute("SELECT COUNT(*) FROM contents").fetchone()[0]
+                        self._json(200, {"custody_head": head, "n_contents": n})
+                    except _sq.OperationalError:
+                        self._json(404, {"error": "no custody chain yet"})
+                    finally:
+                        conn.close()
                 case ["health"]:
                     payload = {"status": "ok", "ratings": ids}
                     if db_path is not None:

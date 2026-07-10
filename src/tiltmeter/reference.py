@@ -27,6 +27,8 @@ from datetime import date, timedelta
 
 import requests
 
+from tiltmeter import db
+
 log = logging.getLogger("tiltmeter.reference")
 
 CREC_URL = "https://www.govinfo.gov/content/pkg/CREC-{day}.zip"
@@ -34,20 +36,6 @@ VOTEVIEW_URL = "https://voteview.com/static/data/out/members/{chamber}{congress}
 USER_AGENT = "tiltmeter/0.1 (+https://github.com/sudolulo/tiltmeter; reference corpus builder)"
 PARTY_CODES = {"100": "D", "200": "R"}  # others (independents etc.) are dropped
 MIN_SPEECH_WORDS = 50  # procedural one-liners carry no party language signal
-
-SCHEMA = """
-CREATE TABLE IF NOT EXISTS reference_speeches (
-    id INTEGER PRIMARY KEY,
-    day TEXT NOT NULL,
-    granule TEXT NOT NULL,
-    chamber TEXT NOT NULL,
-    speaker TEXT NOT NULL,
-    state TEXT,
-    party TEXT NOT NULL,
-    text TEXT NOT NULL,
-    UNIQUE (granule, speaker, text)
-);
-"""
 
 # "  Mr. GREEN of Texas. ..." / "  Ms. PELOSI. ..." — surname in caps is what
 # distinguishes a speech opening from a prose mention ("Mr. Green of Texas was
@@ -145,9 +133,9 @@ def fetch_day(day: str, session: requests.Session | None = None) -> bytes | None
 
 
 def ingest_day(conn: sqlite3.Connection, day: str, zip_bytes: bytes, members: dict) -> dict:
-    """Parse one day's floor granules into reference_speeches. Returns counts."""
-    conn.executescript(SCHEMA)
-    counts = {"speeches": 0, "unmatched": 0}
+    """Parse one day's floor granules into reference_speeches. Returns counts
+    plus the new content fingerprints for custody chaining."""
+    counts = {"speeches": 0, "unmatched": 0, "hashes": []}
     with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
         for name in sorted(zf.namelist()):
             m = re.search(r"-Pg([HS])", name)
@@ -160,14 +148,19 @@ def ingest_day(conn: sqlite3.Connection, day: str, zip_bytes: bytes, members: di
                 if party is None:
                     counts["unmatched"] += 1
                     continue
-                conn.execute(
-                    "INSERT OR IGNORE INTO reference_speeches"
-                    " (day, granule, chamber, speaker, state, party, text)"
-                    " VALUES (?, ?, ?, ?, ?, ?, ?)",
-                    (day, name.rsplit("/", 1)[-1], chamber, speech["speaker"],
-                     speech["state"], party, speech["text"]),
+                chash = db.insert_speech(
+                    conn,
+                    day=day,
+                    granule=name.rsplit("/", 1)[-1],
+                    chamber=chamber,
+                    speaker=speech["speaker"],
+                    state=speech["state"],
+                    party=party,
+                    text=speech["text"],
                 )
-                counts["speeches"] += 1
+                if chash:
+                    counts["speeches"] += 1
+                    counts["hashes"].append(chash)
     conn.commit()
     return counts
 
@@ -177,6 +170,7 @@ def fetch_range(conn: sqlite3.Connection, end_day: str, session_days: int, congr
     members = load_members(congress)
     http = requests.Session()
     totals = {"days": 0, "speeches": 0, "unmatched": 0, "skipped": 0}
+    run_hashes: list[str] = []
     cursor = date.fromisoformat(end_day)
     attempts = 0
     while totals["days"] < session_days and attempts < session_days * 5:
@@ -185,9 +179,7 @@ def fetch_range(conn: sqlite3.Connection, end_day: str, session_days: int, congr
         cursor -= timedelta(days=1)
         already = conn.execute(
             "SELECT 1 FROM reference_speeches WHERE day = ? LIMIT 1", (day,)
-        ).fetchone() if conn.execute(
-            "SELECT name FROM sqlite_master WHERE name='reference_speeches'"
-        ).fetchone() else None
+        ).fetchone()
         if already:
             totals["days"] += 1
             continue
@@ -200,5 +192,9 @@ def fetch_range(conn: sqlite3.Connection, end_day: str, session_days: int, congr
         totals["days"] += 1
         totals["speeches"] += counts["speeches"]
         totals["unmatched"] += counts["unmatched"]
+        run_hashes.extend(counts["hashes"])
         log.info("%s: %d speeches (%d unmatched)", day, counts["speeches"], counts["unmatched"])
+    entry = db.custody_append(conn, "reference", run_hashes)
+    if entry:
+        log.info("custody: seq %d chains %d new items", entry["seq"], entry["n_items"])
     return totals

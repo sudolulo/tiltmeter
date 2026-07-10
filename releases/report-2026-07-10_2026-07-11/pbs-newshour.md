@@ -1,7 +1,7 @@
 # Evidence: pbs-newshour
 
 - **Score**: -0.036 (95% CI -0.447 … +0.401); negative = left, positive = right
-- **Snapshot**: 2026-07-10_2026-07-11 (corpus 626c32fd3570…), pipeline v0.3.0
+- **Snapshot**: 2026-07-10_2026-07-11 (corpus 626c32fd3570…), pipeline v0.5.0
 - **Coverage**: 11 of 63 cross-outlet stories
 - **Nearest neighbors**: washington-post (-0.037), fox-news (-0.032), washington-examiner (-0.030)
 

@@ -7,9 +7,9 @@ The command-line interface:
   tiltmeter snapshot   — freeze a window of the corpus into a manifest
   tiltmeter reference  — fetch congressional floor speeches (the D5 anchor)
   tiltmeter run        — manifest → ratings.json + evidence pages
+  tiltmeter validate   — the M3 gate: rank-correlate a release vs the raters
+  tiltmeter sweep      — sensitivity: rescore across the threshold grid
   tiltmeter serve      — read-only HTTP API over computed releases
-
-Later milestones add: validate (the M3 gate).
 """
 
 import argparse
@@ -89,6 +89,45 @@ def cmd_run(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_validate(args: argparse.Namespace) -> int:
+    import json
+    from pathlib import Path
+
+    from tiltmeter import validate
+
+    ratings = json.loads(Path(args.ratings).read_text())
+    reference = validate.load_reference(args.reference, allow_unverified=args.allow_unverified)
+    result = validate.report(ratings, reference)
+
+    out = Path(args.ratings).parent / f"validation-{result['snapshot_id']}.json"
+    out.write_text(json.dumps(result, indent=1, sort_keys=True) + "\n")
+
+    if result["skipped_unverified"]:
+        print(f"  SKIPPED {len(result['skipped_unverified'])} unverified reference entries"
+              " (verify at source or pass --allow-unverified to peek)")
+    for rater, r in result["raters"].items():
+        mark = "PASS" if r["passes_gate"] else "fail"
+        print(f"  {rater:10} rho={r['rho']:+.3f}  n={r['n']}  p={r['permutation_p']}  [{mark}]")
+    if not result["orientation_reliable"]:
+        print("  orientation UNRELIABLE — gate cannot pass regardless of rho")
+    print(f"  GATE: {'PASSED' if result['gate_passed'] else 'not passed'}  -> {out}")
+    return 0
+
+
+def cmd_sweep(args: argparse.Namespace) -> int:
+    from tiltmeter import snapshot, sweep
+
+    manifest = snapshot.load(args.manifest)
+    conn = db.connect(args.db)
+    result = sweep.run_sweep(conn, manifest)
+    path = sweep.write(result, args.out)
+    print(f"sweep: {path}")
+    for key, rho in sorted(result["rank_correlation_vs_default"].items()):
+        entry = result["thresholds"][key]
+        print(f"  threshold {key}: {entry['n_stories']} stories, rank-corr vs default {rho:+.3f}")
+    return 0
+
+
 def cmd_serve(args: argparse.Namespace) -> int:
     from tiltmeter import serve
 
@@ -142,6 +181,20 @@ def main(argv: list[str] | None = None) -> int:
     p_run.add_argument("--manifest", required=True, help="path to a snapshot manifest")
     p_run.add_argument("--out", default="releases", help="output directory")
     p_run.set_defaults(func=cmd_run)
+
+    p_validate = sub.add_parser("validate", help="M3 gate: rank-correlate a release vs raters")
+    p_validate.add_argument("--ratings", required=True, help="path to a ratings-*.json release")
+    p_validate.add_argument("--reference", default="config/reference_ratings.yaml")
+    p_validate.add_argument(
+        "--allow-unverified", action="store_true",
+        help="include reference values not verified at source (peeking only, never for the gate)",
+    )
+    p_validate.set_defaults(func=cmd_validate)
+
+    p_sweep = sub.add_parser("sweep", help="sensitivity sweep across the clustering threshold")
+    p_sweep.add_argument("--manifest", required=True)
+    p_sweep.add_argument("--out", default="releases")
+    p_sweep.set_defaults(func=cmd_sweep)
 
     p_serve = sub.add_parser("serve", help="read-only HTTP API over computed releases")
     p_serve.add_argument("--releases", default="releases")

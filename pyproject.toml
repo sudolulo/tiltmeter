@@ -1,6 +1,6 @@
 [project]
 name = "tiltmeter"
-version = "0.4.1"
+version = "0.5.0"
 description = "Auditable, reproducible political-lean ratings for news outlets"
 readme = "README.md"
 requires-python = ">=3.13"

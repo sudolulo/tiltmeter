@@ -130,6 +130,10 @@ def make_handler(releases: Path, outlets_config: Path | None = None, db_path: Pa
                     self._json(200, outlets_payload)
                 case ["stories", sid] if SNAPSHOT_ID_RE.match(sid):
                     self._file(releases / f"stories-{sid}.json", "application/json")
+                case ["validation", sid] if SNAPSHOT_ID_RE.match(sid):
+                    self._file(releases / f"validation-{sid}.json", "application/json")
+                case ["sweeps", sid] if SNAPSHOT_ID_RE.match(sid):
+                    self._file(releases / f"sweep-{sid}.json", "application/json")
                 case ["manifests", sid] if SNAPSHOT_ID_RE.match(sid):
                     self._file(releases / f"manifest-{sid}.json", "application/json")
                 case ["evidence", sid] if SNAPSHOT_ID_RE.match(sid):

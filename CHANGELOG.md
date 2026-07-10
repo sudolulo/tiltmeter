@@ -8,6 +8,26 @@ requires a version bump and, if it changes methodology, a decision record in
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-07-10
+
+The M3 gate as code: on gate day the validation is one command.
+
+### Added
+
+- `tiltmeter validate` (D7): Spearman rank correlation of a ratings release
+  against AllSides and Ad Fontes over shared outlets, with fixed-seed
+  permutation p-values and the pre-declared pass bar (rho >= 0.7 against
+  both AND reliable orientation). Refuses reference values not verified at
+  source unless `--allow-unverified` (peeking only). Emits
+  validation-{snapshot}.json, served at /validation/{id}.
+- `tiltmeter sweep` (D7): rescoring across the clustering-threshold grid
+  (0.35-0.55) with rank-correlation-vs-default stability figures. Emits
+  sweep-{snapshot}.json, served at /sweeps/{id}.
+- Day-one diagnostics recorded honestly: validation fails (orientation
+  unreliable; rho meaningless with an arbitrary sign) and threshold
+  stability is low - the instruments agree one day of corpus is not enough,
+  which is what they are for.
+
 ## [0.4.1] - 2026-07-10
 
 ### Fixed

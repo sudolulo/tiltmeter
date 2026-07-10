@@ -32,7 +32,12 @@ CREATE TABLE IF NOT EXISTS embeddings (
 
 
 def passage(title: str, text: str | None, summary: str | None) -> str:
-    """The text we embed: headline plus lede (or feed summary as fallback)."""
+    """The text we embed: headline plus lede (or feed summary as fallback).
+
+    Everything read here is inside the fingerprinted payload, so two articles
+    with identical passages always share a fingerprint and vice versa — the
+    embedding cache can never serve the wrong vector.
+    """
     body = text or summary or ""
     lede = " ".join(body.split()[:LEDE_WORDS])
     return f"{title}. {lede}".strip()
@@ -74,17 +79,11 @@ def embed_hashes(conn: sqlite3.Connection, content_hashes: list[str]) -> np.ndar
     if missing:
         from tiltmeter import db as tdb
 
-        placeholders = ",".join("?" * len(missing))
-        rows = conn.execute(
-            f"SELECT DISTINCT content_hash, summary FROM articles"
-            f" WHERE content_hash IN ({placeholders})",
-            missing,
-        ).fetchall()
         found = {}
-        for chash, summary in rows:
-            title_text = tdb.get_article_text(conn, chash)
-            if title_text is not None:
-                found[chash] = passage(title_text[0], title_text[1], summary)
+        for chash in missing:
+            content = tdb.get_article_content(conn, chash)
+            if content is not None:
+                found[chash] = passage(content[0], content[1], content[2])
         absent = [h for h in missing if h not in found]
         if absent:
             raise ValueError(

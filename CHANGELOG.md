@@ -8,6 +8,34 @@ requires a version bump and, if it changes methodology, a decision record in
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-07-10
+
+Early-development reset (ADR-0005): with a one-day corpus, compatibility debt
+was deleted instead of carried. Databases and release artifacts were wiped on
+all deployments; collection restarted clean. This is the last reset — from
+v3 on, fingerprint changes require a migration ADR.
+
+### Changed
+
+- Fingerprint payload v3 covers title + body + feed summary. Fixes a real
+  v2 defect: paywalled articles sharing a headline but differing in summary
+  shared a fingerprint and could share one cached embedding (now pinned by
+  test).
+- `articles` is pure reference metadata — title/summary columns removed;
+  content lives in exactly one place, the fingerprinted payload.
+- New `observed_at` (feed appearance time; snapshot window key) vs
+  `fetched_at` (storage time; custody record), plus `source` provenance.
+- v1/v2 migration machinery deleted; pre-v3 stores are refused with a clear
+  error.
+
+### Investigated and rejected
+
+- Historical backfill via Wayback Machine feed replay: CDX probe shows our
+  feed URLs captured 0-4 days per 60 for nearly all outlets. Per-outlet
+  coverage that uneven would make missingness read as editorial choice.
+  The corpus remains forward-only; observed_at/source stay for any future
+  archival source that survives scrutiny.
+
 ## [0.6.0] - 2026-07-10
 
 Storage architecture for the long haul (METHODOLOGY D11, ADR-0004): the

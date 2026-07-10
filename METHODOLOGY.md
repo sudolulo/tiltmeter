@@ -250,18 +250,20 @@ regenerating them is part of the ≤3-command reproduction path.
 
 ## D11. The dataset is a single content-addressed file with a custody chain
 
-**Decision**: All collected data lives in one SQLite file. Distinct texts are stored
-exactly once, zlib-compressed, keyed by their SHA-256 fingerprint (content-addressed
-storage); metadata rows point at fingerprints. Outlets are a dimension table so
-per-provider data is stored once; feed summaries are stripped to prose at ingest;
-bylines are captured verbatim (unrecoverable later, unused by any signal). Collected
-rows are never updated or deleted (append-only). Every ingestion batch appends an
-entry to a hash chain (`custody_log`): each entry's hash covers the previous entry's
-hash, the batch's item fingerprints, and its timestamp. `tiltmeter audit` re-verifies
-every stored text against its fingerprint and walks the whole chain; the chain head
-is served at `/custody`. One redundancy is kept deliberately: the title appears in
-both article metadata and the fingerprinted payload, because the payload format is
-what published fingerprints already cover — compression absorbs the cost.
+**Decision**: All collected data lives in one SQLite file. Everything captured about
+a piece — headline, body, feed summary — forms a single fingerprinted payload,
+stored exactly once, zlib-compressed, keyed by its SHA-256 (content-addressed
+storage; ADR-0005). Metadata rows (`articles`) hold only references: outlet
+(dimension table), URLs, byline (captured verbatim — unrecoverable later, unused by
+any signal), published, `observed_at` (when the item appeared in its feed — what
+snapshot windows key on), `fetched_at` (when we stored it — what custody records),
+and provenance. Collected rows are never updated or deleted (append-only). Every
+ingestion batch appends an entry to a hash chain (`custody_log`): each entry's hash
+covers the previous entry's hash, the batch's item fingerprints, and its timestamp.
+`tiltmeter audit` re-verifies every stored text against its fingerprint and walks
+the whole chain; the chain head is served at `/custody`. The embedding passage reads
+only from the fingerprinted payload, so identical passages and identical
+fingerprints imply each other — the cache cannot serve the wrong vector.
 
 **Rationale**: The auditable artifact should *be* a file — hashable, copyable,
 publishable, and openable by anyone for decades (SQLite is a US Library of Congress

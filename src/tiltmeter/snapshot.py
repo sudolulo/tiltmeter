@@ -19,16 +19,25 @@ MANIFEST_VERSION = 1
 
 
 def _rows_in_window(conn: sqlite3.Connection, start: str, end: str) -> list[dict]:
-    """All articles fetched within [start, end), ordered deterministically."""
+    """All articles observed in their feeds within [start, end), ordered
+    deterministically. Keyed on observed_at so archive-backfilled items land
+    in the window where they appeared, not the day we retrieved them."""
+    from tiltmeter import db
+
     cur = conn.execute(
-        "SELECT o.name AS outlet, a.url, a.title, a.byline, a.published, a.fetched_at,"
-        " a.content_hash FROM articles a JOIN outlets o ON o.id = a.outlet_id"
-        " WHERE a.fetched_at >= ? AND a.fetched_at < ?"
+        "SELECT o.name AS outlet, a.url, a.byline, a.published, a.observed_at,"
+        " a.fetched_at, a.source, a.content_hash"
+        " FROM articles a JOIN outlets o ON o.id = a.outlet_id"
+        " WHERE a.observed_at >= ? AND a.observed_at < ?"
         " ORDER BY a.content_hash, a.url",
         (start, end),
     )
     cols = [c[0] for c in cur.description]
-    return [dict(zip(cols, row)) for row in cur.fetchall()]
+    rows = [dict(zip(cols, row)) for row in cur.fetchall()]
+    for row in rows:
+        content = db.get_article_content(conn, row["content_hash"])
+        row["title"] = content[0] if content else ""
+    return rows
 
 
 def corpus_hash(article_hashes: list[str]) -> str:
@@ -45,7 +54,7 @@ def create(conn: sqlite3.Connection, start: str, end: str, pipeline_version: str
     return {
         "manifest_version": MANIFEST_VERSION,
         "snapshot_id": snapshot_id,
-        "window": {"start": start, "end": end, "key": "fetched_at"},
+        "window": {"start": start, "end": end, "key": "observed_at"},
         "pipeline_version": pipeline_version,
         "n_articles": len(articles),
         "outlets": sorted({a["outlet"] for a in articles}),

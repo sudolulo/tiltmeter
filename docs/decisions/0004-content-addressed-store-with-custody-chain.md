@@ -1,6 +1,6 @@
 # ADR-0004: Content-addressed SQLite store with an append-only custody chain
 
-- **Status**: accepted
+- **Status**: accepted; kept-redundancy and migration clauses superseded by ADR-0005
 - **Date**: 2026-07-10
 - **Supersedes**: none (implements METHODOLOGY D11; extends D1/D9)
 

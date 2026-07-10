@@ -28,11 +28,17 @@ import zlib
 from datetime import datetime, timezone
 from pathlib import Path
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 GENESIS = "0" * 64
 COMPRESSION_LEVEL = 6  # zlib: ~3x on news text, stdlib, no extra dependency
 
-SCHEMA_V2 = """
+# v3 (early-development reset; no migration path — recreate and recollect):
+# articles is pure reference metadata; ALL captured content (title, body,
+# feed summary) lives in the fingerprinted payload. observed_at = when the
+# item appeared in its feed (live: fetch time; archive backfill: capture
+# time) and is what snapshot windows key on; fetched_at = when we stored it
+# and is what custody records.
+SCHEMA_V3 = """
 CREATE TABLE IF NOT EXISTS contents (
     content_hash TEXT PRIMARY KEY,
     text_z BLOB NOT NULL
@@ -47,15 +53,15 @@ CREATE TABLE IF NOT EXISTS articles (
     outlet_id INTEGER NOT NULL REFERENCES outlets (id),
     url TEXT NOT NULL UNIQUE,
     url_original TEXT,
-    title TEXT NOT NULL,
     byline TEXT,
     published TEXT,
+    observed_at TEXT NOT NULL,
     fetched_at TEXT NOT NULL,
-    summary TEXT,
+    source TEXT NOT NULL DEFAULT 'live',
     content_hash TEXT NOT NULL REFERENCES contents (content_hash)
 );
 CREATE INDEX IF NOT EXISTS idx_articles_outlet ON articles (outlet_id);
-CREATE INDEX IF NOT EXISTS idx_articles_fetched ON articles (fetched_at);
+CREATE INDEX IF NOT EXISTS idx_articles_observed ON articles (observed_at);
 CREATE INDEX IF NOT EXISTS idx_articles_content ON articles (content_hash);
 CREATE TABLE IF NOT EXISTS reference_speeches (
     id INTEGER PRIMARY KEY,
@@ -86,7 +92,9 @@ CREATE INDEX IF NOT EXISTS idx_custody_items_seq ON custody_items (seq);
 
 
 def connect(db_path: str | Path) -> sqlite3.Connection:
-    """Open the database, creating or migrating the schema as needed."""
+    """Open the database, creating the schema if needed. Pre-v3 stores are
+    refused: this is early development and old stores are recollected, not
+    migrated (the migration machinery was deleted with them)."""
     if isinstance(db_path, str) and db_path != ":memory:" and not db_path.startswith("file:"):
         Path(db_path).parent.mkdir(parents=True, exist_ok=True)
     elif isinstance(db_path, Path):
@@ -95,84 +103,27 @@ def connect(db_path: str | Path) -> sqlite3.Connection:
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
     version = conn.execute("PRAGMA user_version").fetchone()[0]
-    if version == 0 and _has_v1_articles(conn):
-        _migrate_v1_to_v2(conn)
-    else:
-        conn.executescript(SCHEMA_V2)
-        conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
-        conn.commit()
+    has_tables = conn.execute("SELECT COUNT(*) FROM sqlite_master").fetchone()[0] > 0
+    if has_tables and version < SCHEMA_VERSION:
+        raise RuntimeError(
+            f"store is schema v{version}; v{SCHEMA_VERSION} is a clean early-dev reset —"
+            " delete the database (and stale releases) and recollect"
+        )
+    conn.executescript(SCHEMA_V3)
+    conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+    conn.commit()
     return conn
 
 
-def _has_v1_articles(conn: sqlite3.Connection) -> bool:
-    row = conn.execute(
-        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='articles'"
-    ).fetchone()
-    if not row:
-        return False
-    cols = {r[1] for r in conn.execute("PRAGMA table_info(articles)")}
-    return "text" in cols  # v1 stored raw text inline
+def _article_payload(title: str, text: str, summary: str) -> str:
+    """The exact byte content an article fingerprint covers: everything we
+    captured about the piece — headline, body, and feed summary."""
+    return title + "\x1f" + text + "\x1f" + summary
 
 
-def _migrate_v1_to_v2(conn: sqlite3.Connection) -> None:
-    """One-shot, transactional v1→v2 migration. Content hashes are preserved
-    verbatim, so manifests, embeddings, and evidence published against v1
-    remain valid against the migrated store."""
-    conn.execute("BEGIN")
-    conn.execute("ALTER TABLE articles RENAME TO articles_v1")
-    has_speeches = conn.execute(
-        "SELECT 1 FROM sqlite_master WHERE name='reference_speeches'"
-    ).fetchone()
-    if has_speeches:
-        conn.execute("ALTER TABLE reference_speeches RENAME TO speeches_v1")
-    conn.executescript(SCHEMA_V2)
-
-    for row in conn.execute(
-        "SELECT outlet, url, title, published, fetched_at, summary, text, content_hash"
-        " FROM articles_v1"
-    ).fetchall():
-        outlet, url, title, published, fetched_at, summary, text, chash = row
-        _store_content(conn, chash, _article_payload(title, text or ""))
-        conn.execute(
-            "INSERT OR IGNORE INTO articles"
-            " (outlet_id, url, url_original, title, byline, published, fetched_at, summary,"
-            " content_hash) VALUES (?, ?, NULL, ?, NULL, ?, ?, ?, ?)",
-            (outlet_id(conn, outlet, fetched_at), url, title, published,
-             fetched_at, summary, chash),
-        )
-    if has_speeches:
-        for row in conn.execute(
-            "SELECT day, granule, chamber, speaker, state, party, text FROM speeches_v1"
-        ).fetchall():
-            day, granule, chamber, speaker, state, party, text = row
-            chash = hashlib.sha256(text.encode()).hexdigest()
-            _store_content(conn, chash, text)
-            conn.execute(
-                "INSERT OR IGNORE INTO reference_speeches"
-                " (day, granule, chamber, speaker, state, party, content_hash)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (day, granule, chamber, speaker, state, party, chash),
-            )
-        conn.execute("DROP TABLE speeches_v1")
-    conn.execute("DROP TABLE articles_v1")
-    conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
-    conn.commit()
-    # chain the migrated backlog as the genesis batch: without this, history
-    # that predates the chain would never be custody-covered
-    migrated = [r[0] for r in conn.execute("SELECT content_hash FROM contents")]
-    custody_append(conn, "migration", migrated)
-    conn.execute("VACUUM")
-
-
-def _article_payload(title: str, text: str) -> str:
-    """The exact byte content an article fingerprint covers (v1-compatible)."""
-    return title + "\x1f" + text
-
-
-def content_hash(title: str, text: str) -> str:
-    """Fingerprint an article's content. Unchanged since v1: published
-    manifests stay verifiable across the schema migration."""
-    return hashlib.sha256(_article_payload(title, text).encode("utf-8")).hexdigest()
+def content_hash(title: str, text: str, summary: str = "") -> str:
+    """Fingerprint an article's full captured content."""
+    return hashlib.sha256(_article_payload(title, text, summary).encode("utf-8")).hexdigest()
 
 
 def _store_content(conn: sqlite3.Connection, chash: str, payload: str) -> None:
@@ -189,13 +140,15 @@ def get_content(conn: sqlite3.Connection, chash: str) -> str | None:
     return zlib.decompress(row[0]).decode("utf-8") if row else None
 
 
-def get_article_text(conn: sqlite3.Connection, chash: str) -> tuple[str, str] | None:
-    """(title, body) for an article fingerprint, or None."""
+def get_article_content(conn: sqlite3.Connection, chash: str) -> tuple[str, str, str] | None:
+    """(title, body, summary) for an article fingerprint, or None."""
     payload = get_content(conn, chash)
     if payload is None:
         return None
-    title, _, text = payload.partition("\x1f")
-    return title, text
+    parts = payload.split("\x1f", 2)
+    while len(parts) < 3:
+        parts.append("")
+    return parts[0], parts[1], parts[2]
 
 
 def outlet_id(conn: sqlite3.Connection, name: str, first_seen: str | None = None) -> int:
@@ -225,19 +178,21 @@ def insert_article(
     text: str | None,
     url_original: str | None = None,
     byline: str | None = None,
+    observed_at: str | None = None,
+    source: str = "live",
 ) -> str | None:
     """Store one newly collected article. Returns its fingerprint, or None
     if the URL was already present."""
     if have_url(conn, url):
         return None
-    chash = content_hash(title, text or "")
-    _store_content(conn, chash, _article_payload(title, text or ""))
+    chash = content_hash(title, text or "", summary or "")
+    _store_content(conn, chash, _article_payload(title, text or "", summary or ""))
     conn.execute(
         "INSERT INTO articles"
-        " (outlet_id, url, url_original, title, byline, published, fetched_at, summary,"
+        " (outlet_id, url, url_original, byline, published, observed_at, fetched_at, source,"
         " content_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (outlet_id(conn, outlet, fetched_at), url, url_original, title, byline,
-         published, fetched_at, summary, chash),
+        (outlet_id(conn, outlet, fetched_at), url, url_original, byline,
+         published, observed_at or fetched_at, fetched_at, source, chash),
     )
     return chash
 

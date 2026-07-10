@@ -100,42 +100,44 @@ def test_url_canonicalization():
     assert canonical_url("https://ex.com/story") == "https://ex.com/story"
 
 
-def test_v1_migration_preserves_fingerprints(tmp_path):
-    """Manifests published against v1 must verify against the migrated store."""
+def test_pre_v3_store_is_refused(tmp_path):
+    """Old stores are recollected, never half-migrated: refuse loudly."""
+    import pytest
+
     path = tmp_path / "old.db"
     raw = sqlite3.connect(path)
-    raw.executescript("""
-        CREATE TABLE articles (
-            id INTEGER PRIMARY KEY, outlet TEXT NOT NULL, url TEXT NOT NULL UNIQUE,
-            title TEXT NOT NULL, published TEXT, fetched_at TEXT NOT NULL,
-            summary TEXT, text TEXT, content_hash TEXT NOT NULL);
-        CREATE TABLE reference_speeches (
-            id INTEGER PRIMARY KEY, day TEXT NOT NULL, granule TEXT NOT NULL,
-            chamber TEXT NOT NULL, speaker TEXT NOT NULL, state TEXT,
-            party TEXT NOT NULL, text TEXT NOT NULL, UNIQUE (granule, speaker, text));
-    """)
-    old_hash = db.content_hash("Old title", "Old body text.")
-    raw.execute(
-        "INSERT INTO articles (outlet, url, title, published, fetched_at, summary, text,"
-        " content_hash) VALUES ('npr', 'https://npr.org/1', 'Old title', NULL,"
-        " '2026-07-01T00:00:00+00:00', 'sum', 'Old body text.', ?)", (old_hash,))
-    raw.execute(
-        "INSERT INTO reference_speeches (day, granule, chamber, speaker, state, party, text)"
-        " VALUES ('2026-06-25', 'g.htm', 'House', 'GREEN', 'Texas', 'D', 'A speech text.')")
+    raw.execute("CREATE TABLE articles (id INTEGER PRIMARY KEY, text TEXT)")
+    raw.execute("PRAGMA user_version = 2")
     raw.commit()
     raw.close()
+    with pytest.raises(RuntimeError, match="early-dev reset"):
+        db.connect(path)
 
-    conn = db.connect(path)  # triggers migration
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == 2
-    assert db.get_article_text(conn, old_hash) == ("Old title", "Old body text.")
-    row = conn.execute("SELECT summary FROM articles WHERE content_hash=?", (old_hash,)).fetchone()
-    assert row == ("sum",)
-    speech = conn.execute(
-        "SELECT party, content_hash FROM reference_speeches").fetchone()
-    assert speech[0] == "D"
-    assert db.get_content(conn, speech[1]) == "A speech text."
+
+def test_fingerprint_covers_summary():
+    """Two paywalled articles (no body) with the same headline but different
+    feed summaries must NOT share a fingerprint — under the v2 payload they
+    collided and could share one embedding."""
+    conn = db.connect(":memory:")
+    common = dict(outlet="wapo", title="Same headline", published=None,
+                  fetched_at="2026-07-10T00:00:00+00:00", text=None)
+    h1 = db.insert_article(conn, url="https://w.po/1", summary="First framing.", **common)
+    h2 = db.insert_article(conn, url="https://w.po/2", summary="Other framing.", **common)
+    assert h1 != h2
+    assert db.get_article_content(conn, h1) == ("Same headline", "", "First framing.")
     assert db.verify_contents(conn) == []
-    # migrating again is a no-op
-    conn.close()
-    conn2 = db.connect(path)
-    assert conn2.execute("SELECT COUNT(*) FROM articles").fetchone()[0] == 1
+
+
+def test_observed_at_defaults_to_fetched_and_accepts_backfill():
+    conn = db.connect(":memory:")
+    live = db.insert_article(
+        conn, outlet="npr", url="https://npr.org/live", title="Live", published=None,
+        fetched_at="2026-07-10T06:00:00+00:00", summary=None, text="x")
+    back = db.insert_article(
+        conn, outlet="npr", url="https://npr.org/old", title="Old", published=None,
+        fetched_at="2026-07-10T06:00:00+00:00", summary=None, text="y",
+        observed_at="2026-06-01T12:00:00+00:00", source="wayback")
+    assert live and back
+    rows = dict(conn.execute("SELECT url, observed_at FROM articles").fetchall())
+    assert rows["https://npr.org/live"] == "2026-07-10T06:00:00+00:00"
+    assert rows["https://npr.org/old"] == "2026-06-01T12:00:00+00:00"

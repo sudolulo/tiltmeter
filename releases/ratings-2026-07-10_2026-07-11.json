@@ -1,0 +1,157 @@
+{
+ "axis_inertia_share": 0.119917,
+ "corpus_hash": "626c32fd35709f7174672c22fa86b56227986e0d4560306bddd49b1a11b03b76",
+ "n_articles": 583,
+ "n_stories": 63,
+ "orientation": {
+  "correlation": 0.183459,
+  "method": "party-mean speech embeddings (ADR-0003)",
+  "reliable": false
+ },
+ "outlets": [
+  {
+   "ci_high": 1.0,
+   "ci_low": -1.0,
+   "outlet": "national-review",
+   "score": -0.056998,
+   "stories_covered": 4
+  },
+  {
+   "ci_high": 0.370098,
+   "ci_low": -0.531857,
+   "outlet": "newsmax",
+   "score": -0.052117,
+   "stories_covered": 12
+  },
+  {
+   "ci_high": 0.228278,
+   "ci_low": -0.436618,
+   "outlet": "ny-post",
+   "score": -0.050542,
+   "stories_covered": 6
+  },
+  {
+   "ci_high": 0.228342,
+   "ci_low": -0.495406,
+   "outlet": "npr",
+   "score": -0.049238,
+   "stories_covered": 7
+  },
+  {
+   "ci_high": 0.263456,
+   "ci_low": -0.370786,
+   "outlet": "the-hill",
+   "score": -0.047202,
+   "stories_covered": 12
+  },
+  {
+   "ci_high": 0.218725,
+   "ci_low": -0.516228,
+   "outlet": "breitbart",
+   "score": -0.044667,
+   "stories_covered": 9
+  },
+  {
+   "ci_high": 0.480408,
+   "ci_low": -0.647752,
+   "outlet": "the-nation",
+   "score": -0.044493,
+   "stories_covered": 11
+  },
+  {
+   "ci_high": 0.141765,
+   "ci_low": -0.240933,
+   "outlet": "daily-wire",
+   "score": -0.043512,
+   "stories_covered": 14
+  },
+  {
+   "ci_high": 0.785451,
+   "ci_low": -0.898349,
+   "outlet": "washington-post",
+   "score": -0.036812,
+   "stories_covered": 7
+  },
+  {
+   "ci_high": 0.401493,
+   "ci_low": -0.447497,
+   "outlet": "pbs-newshour",
+   "score": -0.035984,
+   "stories_covered": 11
+  },
+  {
+   "ci_high": 0.570331,
+   "ci_low": -0.60672,
+   "outlet": "fox-news",
+   "score": -0.03245,
+   "stories_covered": 9
+  },
+  {
+   "ci_high": 0.813997,
+   "ci_low": -0.869201,
+   "outlet": "washington-examiner",
+   "score": -0.030359,
+   "stories_covered": 8
+  },
+  {
+   "ci_high": 0.320726,
+   "ci_low": -0.239156,
+   "outlet": "huffpost",
+   "score": -0.00761,
+   "stories_covered": 25
+  },
+  {
+   "ci_high": 0.0,
+   "ci_low": 0.0,
+   "outlet": "cnn",
+   "score": -0.0,
+   "stories_covered": 0
+  },
+  {
+   "ci_high": 0.0,
+   "ci_low": 0.0,
+   "outlet": "wsj",
+   "score": -0.0,
+   "stories_covered": 0
+  },
+  {
+   "ci_high": 0.557721,
+   "ci_low": -0.434797,
+   "outlet": "nytimes",
+   "score": 0.01963,
+   "stories_covered": 9
+  },
+  {
+   "ci_high": 0.495591,
+   "ci_low": -0.278963,
+   "outlet": "nbc-news",
+   "score": 0.019704,
+   "stories_covered": 11
+  },
+  {
+   "ci_high": 0.352731,
+   "ci_low": -0.286694,
+   "outlet": "axios",
+   "score": 0.032479,
+   "stories_covered": 23
+  },
+  {
+   "ci_high": 1.0,
+   "ci_low": -0.458178,
+   "outlet": "mother-jones",
+   "score": 0.451646,
+   "stories_covered": 4
+  },
+  {
+   "ci_high": 1.0,
+   "ci_low": -0.0,
+   "outlet": "cs-monitor",
+   "score": 1.0,
+   "stories_covered": 2
+  }
+ ],
+ "pipeline_version": "0.3.0",
+ "reference_frame": "lean relative to contemporary US congressional party discourse; negative = left, positive = right",
+ "schema_version": 1,
+ "snapshot_id": "2026-07-10_2026-07-11"
+}

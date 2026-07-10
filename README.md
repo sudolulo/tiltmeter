@@ -40,7 +40,25 @@ uv run tiltmeter snapshot --start 2026-07-10 --end 2026-07-24
 
 # fetch the orientation anchor: congressional floor speeches + party records
 uv run tiltmeter reference --end 2026-07-09 --days 10
+
+# compute ratings + evidence pages from a manifest
+uv run tiltmeter run --manifest releases/manifest-2026-07-10_2026-07-24.json
+
+# serve the computed releases as a read-only JSON API on :8477
+uv run tiltmeter serve
 ```
+
+Or with Docker (the pinned embedding model is baked into the image, so
+recomputation works offline):
+
+```sh
+docker compose up -d                        # API on :8477
+docker compose run --rm tiltmeter ingest    # any pipeline command as one-shot
+```
+
+tiltmeter is a **data layer**: it computes and serves ratings JSON plus evidence
+pages. Visualization is deliberately someone else's job — point your news reader
+or dashboard at the API.
 
 ## The auditability contract
 

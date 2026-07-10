@@ -1,6 +1,6 @@
 [project]
 name = "tiltmeter"
-version = "0.2.0"
+version = "0.3.0"
 description = "Auditable, reproducible political-lean ratings for news outlets"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -11,6 +11,11 @@ dependencies = [
     "trafilatura>=1.12",
     "pyyaml>=6.0",
     "sentence-transformers>=3.0",
+    # torch is transitive via sentence-transformers, but must be a direct
+    # dependency for the pytorch-cpu index pin below to apply (uv resolves
+    # tool.uv.sources for direct dependencies only) — otherwise the lock
+    # pulls CUDA torch and the Docker image balloons to ~7GB
+    "torch>=2.6",
     "scikit-learn>=1.5",
     "numpy>=2.0",
     "requests>=2.32",

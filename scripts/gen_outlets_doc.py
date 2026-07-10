@@ -28,8 +28,12 @@ swap policy for dead feeds are documented in
 [METHODOLOGY.md, decision D4](../METHODOLOGY.md#d4-twenty-outlets-deliberately-spread-chosen-once-and-openly);
 individual swaps are recorded in the [CHANGELOG](../CHANGELOG.md).
 
-| Outlet | Homepage | Feed |
-|---|---|---|
+Ownership is sourced factual context (see the `ownership` blocks in the
+config for source URLs, retrieval dates, and verification status); it is
+never a scoring input.
+
+| Outlet | Owner | Type | Feed |
+|---|---|---|---|
 """
 
 
@@ -37,7 +41,8 @@ def render() -> str:
     with open(CONFIG) as f:
         outlets = yaml.safe_load(f)["outlets"]
     rows = [
-        f"| {o['name']} | <{o['homepage']}> | <{o['feed']}> |"
+        f"| [{o['name']}]({o['homepage']}) | {o['ownership']['owner']} "
+        f"| {o['ownership']['type']} | <{o['feed']}> |"
         for o in sorted(outlets, key=lambda o: o["name"])
     ]
     return HEADER + "\n".join(rows) + f"\n\nTotal: {len(outlets)} outlets.\n"

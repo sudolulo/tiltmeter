@@ -8,69 +8,212 @@
 # - feed must actually work; broken outlets get swapped for a
 #   same-region-of-spectrum alternative, recorded in CHANGELOG.md
 #
-# Fields: name (canonical id), feed (RSS/Atom URL), homepage.
+# Ownership is factual context served alongside ratings (never a scoring
+# input). Integrity rules match reference_ratings.yaml: every entry carries
+# source + retrieval date; verified: false = transcribed from secondary
+# knowledge, confirm at source before relying on it downstream.
+#
+# Fields: name (canonical id), feed (RSS/Atom URL), homepage, ownership.
 
 outlets:
   - name: cs-monitor
     homepage: https://www.csmonitor.com
     feed: https://rss.csmonitor.com/feeds/politics
+    ownership:
+      owner: The Christian Science Publishing Society (First Church of Christ, Scientist)
+      type: nonprofit
+      source: https://en.wikipedia.org/wiki/The_Christian_Science_Monitor
+      retrieved: 2026-07-10
+      verified: false
   - name: pbs-newshour
     homepage: https://www.pbs.org/newshour
     feed: https://www.pbs.org/newshour/feeds/rss/politics
+    ownership:
+      owner: NewsHour Productions LLC (WETA, PBS member station)
+      type: nonprofit
+      source: https://en.wikipedia.org/wiki/PBS_News_Hour
+      retrieved: 2026-07-10
+      verified: false
   - name: npr
     homepage: https://www.npr.org
     feed: https://feeds.npr.org/1014/rss.xml
+    ownership:
+      owner: National Public Radio, Inc.
+      type: nonprofit
+      source: https://en.wikipedia.org/wiki/NPR
+      retrieved: 2026-07-10
+      verified: false
   - name: axios
     homepage: https://www.axios.com
     feed: https://api.axios.com/feed/
+    ownership:
+      owner: Cox Enterprises
+      type: private-company
+      note: family-held conglomerate; acquired Axios Media 2022
+      source: https://en.wikipedia.org/wiki/Axios_(website)
+      retrieved: 2026-07-10
+      verified: false
   - name: the-hill
     homepage: https://thehill.com
     feed: https://thehill.com/homenews/feed/
+    ownership:
+      owner: Nexstar Media Group
+      type: public-company
+      note: acquired 2021; NASDAQ NXST
+      source: https://en.wikipedia.org/wiki/The_Hill_(newspaper)
+      retrieved: 2026-07-10
+      verified: false
   - name: nytimes
     homepage: https://www.nytimes.com
     feed: https://rss.nytimes.com/services/xml/rss/nyt/Politics.xml
+    ownership:
+      owner: The New York Times Company
+      type: public-company
+      note: NYSE NYT; Ochs-Sulzberger family voting control via Class B shares
+      source: https://en.wikipedia.org/wiki/The_New_York_Times_Company
+      retrieved: 2026-07-10
+      verified: false
   - name: washington-post
     homepage: https://www.washingtonpost.com
     feed: https://feeds.washingtonpost.com/rss/politics
+    ownership:
+      owner: Nash Holdings (Jeff Bezos)
+      type: private-company
+      source: https://en.wikipedia.org/wiki/The_Washington_Post
+      retrieved: 2026-07-10
+      verified: false
   - name: cnn
     homepage: https://www.cnn.com
     feed: http://rss.cnn.com/rss/cnn_allpolitics.rss
+    ownership:
+      owner: Warner Bros. Discovery
+      type: public-company
+      note: in flux — WBD sale to Paramount Skydance DOJ-approved 2026-06-12;
+        CNN slated for the Discovery Global linear-networks entity; re-verify
+        on completion
+      source: https://www.pbs.org/newshour/nation/cnn-and-fellow-cable-networks-are-in-limbo-amid-takeover-bids-of-warner-bros-discovery
+      retrieved: 2026-07-10
+      verified: true
   - name: nbc-news
     homepage: https://www.nbcnews.com
     feed: https://feeds.nbcnews.com/nbcnews/public/politics
+    ownership:
+      owner: NBCUniversal (Comcast)
+      type: public-company
+      note: NBC News remained with Comcast after the 2025 Versant cable spinoff
+        (which took MSNBC/CNBC); confirm current structure
+      source: https://en.wikipedia.org/wiki/NBC_News
+      retrieved: 2026-07-10
+      verified: false
   - name: huffpost
     homepage: https://www.huffpost.com
     feed: https://www.huffpost.com/section/politics/feed
+    ownership:
+      owner: BuzzFeed, Inc.
+      type: public-company
+      note: acquired 2021
+      source: https://en.wikipedia.org/wiki/HuffPost
+      retrieved: 2026-07-10
+      verified: false
   - name: mother-jones
     homepage: https://www.motherjones.com
     feed: https://www.motherjones.com/politics/feed/
+    ownership:
+      owner: Center for Investigative Reporting
+      type: nonprofit
+      note: Foundation for National Progress merged into CIR 2024-02-01
+      source: https://pressgazette.co.uk/the-wire/media-mergers-news-tracker/mother-jones-merges-with-center-for-investigative-reporting/
+      retrieved: 2026-07-10
+      verified: true
   - name: the-nation
     homepage: https://www.thenation.com
     feed: https://www.thenation.com/feed/?post_type=article
+    ownership:
+      owner: The Nation Company, L.P.
+      type: private-company
+      source: https://en.wikipedia.org/wiki/The_Nation
+      retrieved: 2026-07-10
+      verified: false
   # WSJ's politics feed is dead; the working feed is general news (not the
   # Opinion feed — news and opinion are rated separately by every incumbent
   # rater, and we collect news). Topic-mix tradeoff noted in METHODOLOGY D9.
   - name: wsj
     homepage: https://www.wsj.com
     feed: https://feeds.a.dj.com/rss/RSSWorldNews.xml
+    ownership:
+      owner: Dow Jones & Company (News Corp)
+      type: public-company
+      note: NASDAQ NWSA; Murdoch family trust voting control
+      source: https://en.wikipedia.org/wiki/The_Wall_Street_Journal
+      retrieved: 2026-07-10
+      verified: false
   - name: national-review
     homepage: https://www.nationalreview.com
     feed: https://www.nationalreview.com/feed/
+    ownership:
+      owner: National Review Institute
+      type: nonprofit
+      note: wholly-owned subsidiary of the 501(c)(3) NRI since 2015
+      source: https://ballotpedia.org/National_Review
+      retrieved: 2026-07-10
+      verified: true
   - name: washington-examiner
     homepage: https://www.washingtonexaminer.com
     feed: https://www.washingtonexaminer.com/feed
+    ownership:
+      owner: Clarity Media Group (Anschutz Corporation)
+      type: private-company
+      source: https://en.wikipedia.org/wiki/Washington_Examiner
+      retrieved: 2026-07-10
+      verified: false
   - name: ny-post
     homepage: https://nypost.com
     feed: https://nypost.com/politics/feed/
+    ownership:
+      owner: NYP Holdings (News Corp)
+      type: public-company
+      note: Murdoch family trust voting control
+      source: https://en.wikipedia.org/wiki/New_York_Post
+      retrieved: 2026-07-10
+      verified: false
   - name: fox-news
     homepage: https://www.foxnews.com
     feed: https://moxie.foxnews.com/google-publisher/politics.xml
+    ownership:
+      owner: Fox News Media (Fox Corporation)
+      type: public-company
+      note: NASDAQ FOXA; Murdoch family trust voting control
+      source: https://en.wikipedia.org/wiki/Fox_News
+      retrieved: 2026-07-10
+      verified: false
   - name: daily-wire
     homepage: https://www.dailywire.com
     feed: https://www.dailywire.com/feeds/rss.xml
+    ownership:
+      owner: The Daily Wire, LLC
+      type: private-company
+      note: co-founders Ben Shapiro and Jeremy Boreing; principal early funder
+        Farris Wilks
+      source: https://en.wikipedia.org/wiki/The_Daily_Wire
+      retrieved: 2026-07-10
+      verified: false
   - name: breitbart
     homepage: https://www.breitbart.com
     feed: https://feeds.feedburner.com/breitbart
+    ownership:
+      owner: Breitbart News Network, LLC
+      type: private-company
+      note: Mercer family reported major stakeholders; CEO Larry Solov
+      source: https://en.wikipedia.org/wiki/Breitbart_News
+      retrieved: 2026-07-10
+      verified: false
   - name: newsmax
     homepage: https://www.newsmax.com
     feed: https://www.newsmax.com/rss/Politics/1/
+    ownership:
+      owner: Newsmax, Inc.
+      type: public-company
+      note: NYSE NMAX since 2025; founder Christopher Ruddy controlling
+      source: https://finance.yahoo.com/quote/NMAX/
+      retrieved: 2026-07-10
+      verified: true

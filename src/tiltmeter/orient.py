@@ -13,11 +13,12 @@ diagnostic: a weak agreement means orientation (and possibly the axis
 itself) shouldn't be trusted, and the output says so rather than hiding it.
 """
 
-import hashlib
 import sqlite3
 from dataclasses import dataclass
 
 import numpy as np
+
+from tiltmeter.stats import spearman
 
 SPEECH_EMBED_WORDS = 200  # MiniLM reads ~256 tokens; the opening covers the topic
 MIN_ABS_CORRELATION = 0.3  # below this, orientation is flagged unreliable
@@ -31,52 +32,16 @@ class Orientation:
     proxy_by_outlet: tuple[float, ...]  # cos-to-R minus cos-to-D per outlet
 
 
-def _spearman(a: np.ndarray, b: np.ndarray) -> float:
-    ra = np.argsort(np.argsort(a)).astype(np.float64)
-    rb = np.argsort(np.argsort(b)).astype(np.float64)
-    ra -= ra.mean()
-    rb -= rb.mean()
-    denom = np.sqrt((ra**2).sum() * (rb**2).sum())
-    return float((ra * rb).sum() / denom) if denom > 0 else 0.0
-
-
-def _cached_embed_texts(conn: sqlite3.Connection, texts: list[str]) -> np.ndarray:
-    """Embed with the same fingerprint-keyed cache articles use."""
-    from tiltmeter import embed
-
-    hashes = [hashlib.sha256(t.encode()).hexdigest() for t in texts]
-    conn.executescript(embed.CACHE_SCHEMA)
-    cached = {}
-    for h in hashes:
-        row = conn.execute(
-            "SELECT vector FROM embeddings WHERE content_hash = ? AND model = ?",
-            (h, embed.MODEL_NAME),
-        ).fetchone()
-        if row:
-            cached[h] = np.frombuffer(row[0], dtype=np.float32)
-    missing = [(h, t) for h, t in zip(hashes, texts) if h not in cached]
-    if missing:
-        vectors = embed.embed_texts([t for _, t in missing])
-        conn.executemany(
-            "INSERT OR IGNORE INTO embeddings (content_hash, model, vector) VALUES (?, ?, ?)",
-            [(h, embed.MODEL_NAME, v.tobytes()) for (h, _), v in zip(missing, vectors)],
-        )
-        conn.commit()
-        cached.update({h: v for (h, _), v in zip(missing, vectors)})
-    return np.stack([cached[h] for h in hashes])
-
-
 def party_means(conn: sqlite3.Connection) -> dict[str, np.ndarray]:
     """Average embedding of each party's floor speeches (unit-normalized)."""
     from tiltmeter import db as tdb
+    from tiltmeter.embed import cached_embed
 
-    rows = [
-        (party, tdb.get_content(conn, chash))
-        for party, chash in conn.execute(
-            "SELECT party, content_hash FROM reference_speeches"
-        ).fetchall()
-    ]
-    rows = [(p, t) for p, t in rows if t]
+    pairs = conn.execute(
+        "SELECT party, content_hash FROM reference_speeches"
+    ).fetchall()
+    payloads = tdb.get_contents(conn, [chash for _, chash in pairs])
+    rows = [(p, payloads[c]) for p, c in pairs if c in payloads]
     if not rows:
         raise ValueError("no reference speeches; run: tiltmeter reference")
     means = {}
@@ -88,7 +53,7 @@ def party_means(conn: sqlite3.Connection) -> dict[str, np.ndarray]:
         ]
         if len(texts) < 20:
             raise ValueError(f"only {len(texts)} {party} speeches; reference corpus too thin")
-        mean = _cached_embed_texts(conn, texts).mean(axis=0)
+        mean = cached_embed(conn, texts).mean(axis=0)
         means[party] = mean / np.linalg.norm(mean)
     return means
 
@@ -106,7 +71,7 @@ def outlet_proxy(
 
 def orient_sign(axis_positions: list[float], proxy_values: list[float]) -> Orientation:
     """Pure decision: flip the axis if it anti-correlates with party language."""
-    rho = _spearman(np.asarray(axis_positions), np.asarray(proxy_values))
+    rho = spearman(np.asarray(axis_positions), np.asarray(proxy_values))
     return Orientation(
         sign=-1 if rho < 0 else 1,
         correlation=rho,

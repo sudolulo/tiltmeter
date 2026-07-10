@@ -32,8 +32,9 @@ class AxisResult:
     inertia_share: float  # how much of total variation the axis explains
 
 
-def _first_axis(matrix: np.ndarray) -> np.ndarray:
-    """Row (outlet) coordinates on the first correspondence-analysis axis."""
+def first_axis_with_inertia(matrix: np.ndarray) -> tuple[np.ndarray, float]:
+    """Row coordinates on the first correspondence-analysis axis, plus the
+    share of total inertia that axis explains — one SVD, both answers."""
     total = matrix.sum()
     if total == 0:
         raise ValueError("empty coverage matrix")
@@ -54,7 +55,14 @@ def _first_axis(matrix: np.ndarray) -> np.ndarray:
     # bootstrap rounds are comparable; real orientation happens in orient.py
     if axis[np.argmax(np.abs(axis))] < 0:
         axis = -axis
-    return axis
+    eigen = s**2
+    share = float(eigen[0] / eigen.sum()) if eigen.sum() > 0 else 0.0
+    return axis, share
+
+
+def first_axis(matrix: np.ndarray) -> np.ndarray:
+    """The axis alone — public because reporting scales the story side too."""
+    return first_axis_with_inertia(matrix)[0]
 
 
 def _unit_scale(axis: np.ndarray) -> np.ndarray:
@@ -70,7 +78,8 @@ def compute(matrix: np.ndarray, outlet_order: list[str]) -> AxisResult:
             f"only {n_stories} cross-outlet stories for {n_outlets} outlets; "
             "axis would be unstable — collect more corpus"
         )
-    point = _unit_scale(_first_axis(matrix))
+    point_axis, share = first_axis_with_inertia(matrix)
+    point = _unit_scale(point_axis)
 
     rng = np.random.default_rng(BOOTSTRAP_SEED)
     samples = np.zeros((BOOTSTRAP_ROUNDS, n_outlets))
@@ -78,7 +87,7 @@ def compute(matrix: np.ndarray, outlet_order: list[str]) -> AxisResult:
         cols = rng.integers(0, n_stories, size=n_stories)
         resampled = matrix[:, cols]
         try:
-            axis = _unit_scale(_first_axis(resampled))
+            axis = _unit_scale(first_axis(resampled))
         except ValueError:
             axis = point  # degenerate resample: fall back, contributes no spread
         # bootstrap axes have arbitrary sign; align each to the point estimate
@@ -86,14 +95,6 @@ def compute(matrix: np.ndarray, outlet_order: list[str]) -> AxisResult:
             axis = -axis
         samples[i] = axis
     low, high = np.percentile(samples, [2.5, 97.5], axis=0)
-
-    # share of total inertia explained by axis 1, from the point estimate
-    total = matrix / matrix.sum()
-    expected = np.outer(total.sum(axis=1), total.sum(axis=0))
-    with np.errstate(divide="ignore", invalid="ignore"):
-        residuals = np.where(expected > 0, (total - expected) / np.sqrt(expected), 0.0)
-    eigen = np.linalg.svd(residuals, compute_uv=False) ** 2
-    share = float(eigen[0] / eigen.sum()) if eigen.sum() > 0 else 0.0
 
     return AxisResult(
         outlets=tuple(outlet_order),

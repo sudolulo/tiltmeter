@@ -1,0 +1,10 @@
+{
+ "custody_head": {
+  "entry_hash": "cb604de99fe1c210ebdde49108168d8571f08f4cf456eebf9fd7352700e8462f",
+  "seq": 20,
+  "ts": "2026-07-10T16:57:50.515431+00:00"
+ },
+ "intact": true,
+ "n_contents": 572,
+ "problems": []
+}

@@ -62,7 +62,17 @@ REQUIRED_GLOSSARY_TERMS = [
     "Reproducibility",
     "Ideal-point estimation",
     "Lede",
+    "Content-addressed storage",
+    "Custody chain",
+    "Append-only",
+    "Byline",
 ]
+
+
+def test_glossary_has_no_duplicate_entries():
+    terms = glossary_terms()
+    dupes = {t for t in terms if terms.count(t) > 1}
+    assert not dupes, f"glossary defines these more than once: {sorted(dupes)}"
 
 
 def glossary_terms() -> list[str]:

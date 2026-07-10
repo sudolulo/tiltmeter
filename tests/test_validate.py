@@ -40,11 +40,47 @@ def test_reversed_order_fails_gate():
     assert not result.passes_gate
 
 
+def reference_of(**by_rater):
+    return validate.Reference(
+        by_rater={"allsides": by_rater.get("allsides", {}),
+                  "ad_fontes": by_rater.get("ad_fontes", {})},
+        unverified_used=by_rater.get("used", []),
+        unverified_skipped=by_rater.get("skipped", []),
+    )
+
+
+def full_reference():
+    return reference_of(
+        allsides={o: round(s * 2) for o, s in SCORES.items()},
+        ad_fontes={o: s * 40 for o, s in SCORES.items()},
+    )
+
+
 def test_gate_requires_reliable_orientation():
-    reference = {"ad_fontes": {o: s for o, s in SCORES.items()}}
-    result = validate.report(ratings(SCORES, reliable=False), reference)
+    result = validate.report(ratings(SCORES, reliable=False), full_reference())
     assert result["raters"]["ad_fontes"]["passes_gate"]
     assert not result["gate_passed"], "unreliable orientation must block the gate"
+
+
+def test_gate_requires_both_raters():
+    """An empty rater is a missing rater, and a missing rater fails the gate."""
+    one_rater = reference_of(ad_fontes={o: s * 40 for o, s in SCORES.items()})
+    result = validate.report(ratings(SCORES), one_rater)
+    assert result["raters_missing"] == ["allsides"]
+    assert result["raters"]["ad_fontes"]["passes_gate"]
+    assert not result["gate_passed"], "gate must not pass on one rater alone"
+
+
+def test_peek_can_never_pass_gate():
+    ref = full_reference()
+    peeked = validate.Reference(by_rater=ref.by_rater,
+                                unverified_used=["fox-news/allsides"],
+                                unverified_skipped=[])
+    result = validate.report(ratings(SCORES), peeked)
+    assert result["peek"] is True
+    assert result["unverified_used"] == ["fox-news/allsides"]
+    assert all(r["passes_gate"] for r in result["raters"].values())
+    assert not result["gate_passed"], "peeking must be unable to pass the gate"
 
 
 def test_too_few_shared_outlets_refused():
@@ -64,10 +100,12 @@ def test_unverified_reference_excluded_by_default(tmp_path):
         "    ad_fontes: {value: 12.0, verified: true}\n"
     )
     strict = validate.load_reference(ref)
-    assert "right-e" not in strict["allsides"], "unverified value must be excluded"
-    assert "right-e" in strict["ad_fontes"]
-    assert strict["skipped_unverified"] == ["right-e/allsides"]
-    assert strict["allsides"]["left-a"] == -2.0  # scale mapping
+    assert "right-e" not in strict.by_rater["allsides"], "unverified value must be excluded"
+    assert "right-e" in strict.by_rater["ad_fontes"]
+    assert strict.unverified_skipped == ["right-e/allsides"]
+    assert strict.unverified_used == []
+    assert strict.by_rater["allsides"]["left-a"] == -2.0  # scale mapping
 
     peeking = validate.load_reference(ref, allow_unverified=True)
-    assert peeking["allsides"]["right-e"] == 2.0
+    assert peeking.by_rater["allsides"]["right-e"] == 2.0
+    assert peeking.unverified_used == ["right-e/allsides"], "peek use must be recorded"

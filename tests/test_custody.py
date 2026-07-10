@@ -26,6 +26,7 @@ def seeded(conn=None):
         hashes.append(h)
     db.custody_append(conn, "ingest", hashes[:2])
     db.custody_append(conn, "ingest", hashes[2:])
+    conn.commit()  # callers own the transaction; collectors commit rows+chain together
     return conn, hashes
 
 
@@ -123,6 +124,8 @@ def test_fingerprint_covers_summary():
                   fetched_at="2026-07-10T00:00:00+00:00", text=None)
     h1 = db.insert_article(conn, url="https://w.po/1", summary="First framing.", **common)
     h2 = db.insert_article(conn, url="https://w.po/2", summary="Other framing.", **common)
+    db.custody_append(conn, "ingest", [h1, h2])
+    conn.commit()
     assert h1 != h2
     assert db.get_article_content(conn, h1) == ("Same headline", "", "First framing.")
     assert db.verify_contents(conn) == []
@@ -137,6 +140,8 @@ def test_observed_at_defaults_to_fetched_and_accepts_backfill():
         conn, outlet="npr", url="https://npr.org/old", title="Old", published=None,
         fetched_at="2026-07-10T06:00:00+00:00", summary=None, text="y",
         observed_at="2026-06-01T12:00:00+00:00", source="wayback")
+    db.custody_append(conn, "ingest", [live, back])
+    conn.commit()
     assert live and back
     rows = dict(conn.execute("SELECT url, observed_at FROM articles").fetchall())
     assert rows["https://npr.org/live"] == "2026-07-10T06:00:00+00:00"

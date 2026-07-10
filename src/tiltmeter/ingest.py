@@ -82,61 +82,71 @@ def fetch_article_text(url: str) -> str | None:
 
 
 def ingest_outlet(conn, outlet: dict, *, fetch_text: bool = True) -> tuple[int, list[str]]:
-    """Poll one outlet's feed; store unseen articles. Returns (seen, new hashes)."""
+    """Poll one outlet's feed; store unseen articles and chain them, in one
+    transaction. Returns (seen, new hashes).
+
+    Rows and their custody entry become durable together or not at all: no
+    commit happens between insert and chain, so no crash or bad feed entry
+    can leave collected content outside the chain. A malformed entry is
+    skipped, never allowed to abort the batch.
+    """
     parsed = feedparser.parse(outlet["feed"], agent=USER_AGENT)
     now = datetime.now(timezone.utc).isoformat()
     seen, new_hashes = 0, []
     for entry in parsed.entries:
-        raw_url = entry.get("link")
-        title = (entry.get("title") or "").strip()
-        if not raw_url or not title:
-            continue
-        seen += 1
-        url = canonical_url(raw_url)
-        if db.have_url(conn, url):
-            continue
-        text = None
-        if fetch_text:
-            try:
-                text = fetch_article_text(raw_url)
-            except Exception as exc:  # noqa: BLE001 - one bad page must not stop the run
-                log.warning("text fetch failed for %s: %s", raw_url, exc)
-            time.sleep(FETCH_DELAY_SECONDS)
-        chash = db.insert_article(
-            conn,
-            outlet=outlet["name"],
-            url=url,
-            url_original=raw_url if raw_url != url else None,
-            title=title,
-            byline=(entry.get("author") or "").strip() or None,
-            published=entry.get("published") or entry.get("updated"),
-            fetched_at=now,
-            summary=strip_html(entry.get("summary")),
-            text=text,
-        )
-        if chash:
-            new_hashes.append(chash)
+        try:
+            raw_url = entry.get("link")
+            title = (entry.get("title") or "").strip()
+            if not raw_url or not title:
+                continue
+            seen += 1
+            url = canonical_url(raw_url)
+            if db.have_url(conn, url):
+                continue
+            text = None
+            if fetch_text:
+                try:
+                    text = fetch_article_text(raw_url)
+                except Exception as exc:  # noqa: BLE001 - one bad page must not stop the run
+                    log.warning("text fetch failed for %s: %s", raw_url, exc)
+                time.sleep(FETCH_DELAY_SECONDS)
+            chash = db.insert_article(
+                conn,
+                outlet=outlet["name"],
+                url=url,
+                url_original=raw_url if raw_url != url else None,
+                title=title,
+                byline=(entry.get("author") or "").strip() or None,
+                published=entry.get("published") or entry.get("updated"),
+                fetched_at=now,
+                summary=strip_html(entry.get("summary")),
+                text=text,
+            )
+            if chash:
+                new_hashes.append(chash)
+        except Exception as exc:  # noqa: BLE001 - one malformed entry must not orphan a batch
+            log.warning("%s: skipping malformed feed entry: %s", outlet["name"], exc)
+    entry = db.custody_append(conn, "ingest", new_hashes)
     conn.commit()
+    if entry:
+        log.info("%s: custody seq %d chains %d items", outlet["name"], entry["seq"],
+                 entry["n_items"])
     return seen, new_hashes
 
 
 def ingest_all(config_path: str, db_path: str, *, fetch_text: bool = True) -> list[dict]:
-    """Poll every configured outlet once; chain the batch into the custody
-    log. Returns a per-outlet result report."""
+    """Poll every configured outlet once; each outlet's articles are chained
+    and committed atomically. Returns a per-outlet result report."""
     conn = db.connect(db_path)
     results = []
-    run_hashes: list[str] = []
     for outlet in load_outlets(config_path):
         try:
             seen, new_hashes = ingest_outlet(conn, outlet, fetch_text=fetch_text)
-            run_hashes.extend(new_hashes)
             results.append({"outlet": outlet["name"], "seen": seen, "new": len(new_hashes)})
             log.info("%s: %d entries in feed, %d new", outlet["name"], seen, len(new_hashes))
         except Exception as exc:  # noqa: BLE001 - one bad feed must not stop the run
+            conn.rollback()  # nothing half-collected may leak into the next batch
             results.append({"outlet": outlet["name"], "error": str(exc)})
             log.error("%s: feed failed: %s", outlet["name"], exc)
-    entry = db.custody_append(conn, "ingest", run_hashes)
-    if entry:
-        log.info("custody: seq %d chains %d new items", entry["seq"], entry["n_items"])
     conn.close()
     return results

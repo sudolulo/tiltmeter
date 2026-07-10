@@ -12,13 +12,14 @@ the pairwise rank correlation between every threshold's ordering and the
 default's.
 """
 
-import json
 import sqlite3
 from pathlib import Path
 
 from tiltmeter import embed, orient
+from tiltmeter.artifacts import write as write_artifact
+from tiltmeter.score import outlet_mean_vectors
 from tiltmeter.cluster import DISTANCE_THRESHOLD, cluster_articles, coverage_matrix
-from tiltmeter.orient import _spearman
+from tiltmeter.stats import spearman
 from tiltmeter.signals import selection
 
 THRESHOLD_GRID = (0.35, 0.40, 0.45, 0.50, 0.55)
@@ -32,11 +33,7 @@ def run_sweep(conn: sqlite3.Connection, manifest: dict) -> dict:
     outlets = [a["outlet"] for a in articles]
 
     party = orient.party_means(conn)
-    outlet_vectors = {
-        name: vectors[[i for i, a in enumerate(articles) if a["outlet"] == name]].mean(axis=0)
-        for name in outlet_order
-    }
-    proxy = orient.outlet_proxy(outlet_vectors, party)
+    proxy = orient.outlet_proxy(outlet_mean_vectors(articles, vectors, outlet_order), party)
 
     per_threshold: dict[str, dict] = {}
     for threshold in THRESHOLD_GRID:
@@ -67,7 +64,7 @@ def run_sweep(conn: sqlite3.Connection, manifest: dict) -> dict:
         for key, entry in per_threshold.items():
             if "scores" in entry:
                 other = [entry["scores"][n] for n in outlet_order]
-                stability[key] = round(_spearman(base, other), 4)
+                stability[key] = round(spearman(base, other), 4)
 
     return {
         "snapshot_id": manifest["snapshot_id"],
@@ -79,7 +76,4 @@ def run_sweep(conn: sqlite3.Connection, manifest: dict) -> dict:
 
 
 def write(sweep: dict, out_dir: str | Path) -> Path:
-    path = Path(out_dir) / f"sweep-{sweep['snapshot_id']}.json"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(sweep, indent=1, sort_keys=True, ensure_ascii=False) + "\n")
-    return path
+    return write_artifact(out_dir, "sweeps", sweep["snapshot_id"], sweep)

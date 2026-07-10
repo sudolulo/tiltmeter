@@ -39,5 +39,6 @@ def test_weak_agreement_is_flagged_unreliable():
 def test_spearman_matches_known_value():
     # perfect monotone but nonlinear relation: rank correlation must be 1
     a = np.array([1.0, 2.0, 3.0, 4.0])
-    assert orient._spearman(a, a**3) == 1.0
-    assert orient._spearman(a, -(a**3)) == -1.0
+    from tiltmeter.stats import spearman
+    assert spearman(a, a**3) == 1.0
+    assert spearman(a, -(a**3)) == -1.0

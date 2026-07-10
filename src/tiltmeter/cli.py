@@ -6,9 +6,13 @@ The command-line interface:
   tiltmeter status     — show how many articles we hold per outlet
   tiltmeter snapshot   — freeze a window of the corpus into a manifest
   tiltmeter reference  — fetch congressional floor speeches (the D5 anchor)
-  tiltmeter run        — manifest → ratings.json + evidence pages
+  tiltmeter run        — manifest → ratings.json + stories + evidence pages
+  tiltmeter cycle      — one full collection cycle: ingest, reference top-up,
+                         rolling snapshot + run, audit (the deployment loop,
+                         so window policy lives in tested code, not in shell)
   tiltmeter validate   — the M3 gate: rank-correlate a release vs the raters
   tiltmeter sweep      — sensitivity: rescore across the threshold grid
+  tiltmeter audit      — verify every content fingerprint + custody chain
   tiltmeter serve      — read-only HTTP API over computed releases
 """
 
@@ -20,6 +24,7 @@ from tiltmeter import db, ingest
 
 DEFAULT_CONFIG = "config/outlets.yaml"
 DEFAULT_DB = "data/tiltmeter.db"
+WINDOW_DAYS = 14  # rolling snapshot window (METHODOLOGY D6/D7 corpus policy)
 
 
 def cmd_ingest(args: argparse.Namespace) -> int:
@@ -55,33 +60,38 @@ def cmd_reference(args: argparse.Namespace) -> int:
         f"  {totals['days']} session days, {totals['speeches']} speeches stored, "
         f"{totals['unmatched']} unmatched speakers dropped, {totals['skipped']} recess days"
     )
-    row = conn.execute(
+    for party, count in conn.execute(
         "SELECT party, COUNT(*) FROM reference_speeches GROUP BY party"
-    ).fetchall()
-    for party, count in row:
+    ).fetchall():
         print(f"  {party}: {count} speeches total")
     return 0
 
 
 def cmd_run(args: argparse.Namespace) -> int:
-    from tiltmeter import __version__, report, score, snapshot
+    from tiltmeter import __version__, artifacts, report, score, snapshot
 
     manifest = snapshot.load(args.manifest)
     conn = db.connect(args.db)
-    ratings = score.compute(conn, manifest, __version__)
-    ratings_path = score.write(ratings, args.out)
-    stories, matrix, articles = score.story_details(conn, manifest)
-    stories_path = score.write_stories(score.stories_json(stories, articles, manifest), args.out)
-    report_dir = report.write(report.render(ratings, stories, matrix, articles), ratings, args.out)
+    result = score.compute(conn, manifest, __version__)
+    ratings_path = artifacts.write(args.out, "ratings", manifest["snapshot_id"], result.ratings)
+    stories_path = artifacts.write(
+        args.out, "stories", manifest["snapshot_id"], score.stories_json(result, manifest)
+    )
+    report_dir = report.write(
+        report.render(result.ratings, result.stories, result.matrix, result.articles),
+        result.ratings,
+        args.out,
+    )
 
     print(f"ratings: {ratings_path}\nstories: {stories_path}\nevidence: {report_dir}/")
-    o = ratings["orientation"]
+    o = result.ratings["orientation"]
     flag = "" if o["reliable"] else "  [UNRELIABLE — do not interpret]"
     print(
-        f"stories: {ratings['n_stories']}, axis inertia {ratings['axis_inertia_share']:.0%}, "
+        f"stories: {result.ratings['n_stories']}, "
+        f"axis inertia {result.ratings['axis_inertia_share']:.0%}, "
         f"orientation rho {o['correlation']:+.2f}{flag}"
     )
-    for entry in ratings["outlets"]:
+    for entry in result.ratings["outlets"]:
         print(
             f"  {entry['score']:+.3f}  [{entry['ci_low']:+.3f} {entry['ci_high']:+.3f}]"
             f"  {entry['outlet']}"
@@ -89,22 +99,74 @@ def cmd_run(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_cycle(args: argparse.Namespace) -> int:
+    """One full collection cycle — the unit deployments repeat on a schedule.
+
+    Window policy lives here, in code with tests: a rolling WINDOW_DAYS-day
+    window ending today (exclusive), keyed on observed_at, so each day's
+    re-runs are byte-identical and yesterday's window is complete.
+    """
+    from datetime import date, timedelta
+
+    from tiltmeter import __version__, artifacts, report, score, snapshot
+
+    rc = cmd_ingest(args)
+
+    from tiltmeter import reference
+
+    conn = db.connect(args.db)
+    try:
+        end = date.today()
+        reference.fetch_range(conn, end.isoformat(), args.reference_days, args.congress)
+    except Exception as exc:  # noqa: BLE001 - anchor top-up must not kill collection
+        print(f"  reference top-up failed (non-fatal): {exc}")
+
+    start = (date.today() - timedelta(days=WINDOW_DAYS)).isoformat()
+    end = date.today().isoformat()
+    try:
+        manifest = snapshot.create(conn, start, end, __version__)
+        snapshot.write(manifest, args.out)
+        result = score.compute(conn, manifest, __version__)
+        artifacts.write(args.out, "ratings", manifest["snapshot_id"], result.ratings)
+        artifacts.write(
+            args.out, "stories", manifest["snapshot_id"], score.stories_json(result, manifest)
+        )
+        report.write(
+            report.render(result.ratings, result.stories, result.matrix, result.articles),
+            result.ratings,
+            args.out,
+        )
+        print(f"  rolling release {manifest['snapshot_id']} written")
+    except ValueError as exc:
+        print(f"  no rolling release: {exc}")
+
+    audit_rc = cmd_audit(argparse.Namespace(db=args.db, emit=args.audit_emit))
+    return rc or audit_rc
+
+
 def cmd_validate(args: argparse.Namespace) -> int:
-    import json
     from pathlib import Path
 
-    from tiltmeter import validate
+    from tiltmeter import artifacts, validate
 
-    ratings = json.loads(Path(args.ratings).read_text())
+    ratings = artifacts.read_json(args.ratings)
     reference = validate.load_reference(args.reference, allow_unverified=args.allow_unverified)
     result = validate.report(ratings, reference)
 
-    out = Path(args.ratings).parent / f"validation-{result['snapshot_id']}.json"
-    out.write_text(json.dumps(result, indent=1, sort_keys=True) + "\n")
+    # peeks are labeled inside AND outside: a different filename that the
+    # public API never serves, so a peek cannot masquerade as the gate
+    prefix = "validation-peek" if result["peek"] else "validation"
+    out = Path(args.ratings).parent / f"{prefix}-{result['snapshot_id']}.json"
+    artifacts.write_json(out, result)
 
+    if result["peek"]:
+        print("  PEEK RUN — unverified reference values used; can never pass the gate")
+        print(f"  unverified used: {len(result['unverified_used'])}")
     if result["skipped_unverified"]:
         print(f"  SKIPPED {len(result['skipped_unverified'])} unverified reference entries"
-              " (verify at source or pass --allow-unverified to peek)")
+              " (verify at source to include them)")
+    for rater in result["raters_missing"]:
+        print(f"  {rater:10} MISSING — no verified values; gate cannot pass")
     for rater, r in result["raters"].items():
         mark = "PASS" if r["passes_gate"] else "fail"
         print(f"  {rater:10} rho={r['rho']:+.3f}  n={r['n']}  p={r['permutation_p']}  [{mark}]")
@@ -129,18 +191,32 @@ def cmd_sweep(args: argparse.Namespace) -> int:
 
 
 def cmd_audit(args: argparse.Namespace) -> int:
-    """Full dataset integrity check: content hashes + custody chain."""
-    import json
-    from pathlib import Path
+    """Full dataset integrity check — strictly read-only.
 
-    conn = db.connect(args.db)
-    problems = db.custody_verify(conn) + db.verify_contents(conn)
-    head = db.custody_head(conn)
-    n_contents = conn.execute("SELECT COUNT(*) FROM contents").fetchone()[0]
+    Opens the store in read-only mode and refuses a missing file: an audit
+    that could create an empty store and pass would be worse than no audit.
+    """
+    from tiltmeter import artifacts
+
+    try:
+        conn = db.connect_readonly(args.db)
+    except FileNotFoundError as exc:
+        print(f"  AUDIT FAILED: {exc}")
+        return 1
+    try:
+        problems = db.custody_verify(conn) + db.verify_contents(conn)
+        head = db.custody_head(conn)
+        n_contents = conn.execute("SELECT COUNT(*) FROM contents").fetchone()[0]
+    except db.sqlite3.OperationalError as exc:
+        print(f"  AUDIT FAILED: store unreadable or pre-custody schema ({exc})")
+        return 1
+    finally:
+        conn.close()
     if args.emit:
-        Path(args.emit).write_text(json.dumps(
-            {"custody_head": head, "n_contents": n_contents,
-             "intact": not problems, "problems": problems}, indent=1) + "\n")
+        artifacts.write_json(args.emit, {
+            "custody_head": head, "n_contents": n_contents,
+            "intact": not problems, "problems": problems,
+        })
     print(f"  contents: {n_contents} items, chain head seq {head['seq']}")
     if problems:
         for p in problems[:20]:
@@ -154,7 +230,8 @@ def cmd_audit(args: argparse.Namespace) -> int:
 def cmd_serve(args: argparse.Namespace) -> int:
     from tiltmeter import serve
 
-    serve.run(args.releases, args.host, args.port, db_path=args.db)
+    serve.run(args.releases, args.host, args.port,
+              outlets_config=args.config, db_path=args.db)
     return 0
 
 
@@ -205,12 +282,21 @@ def main(argv: list[str] | None = None) -> int:
     p_run.add_argument("--out", default="releases", help="output directory")
     p_run.set_defaults(func=cmd_run)
 
+    p_cycle = sub.add_parser("cycle", help="one full collection cycle (the deployment unit)")
+    p_cycle.add_argument("--config", default=DEFAULT_CONFIG)
+    p_cycle.add_argument("--out", default="releases")
+    p_cycle.add_argument("--no-text", action="store_true")
+    p_cycle.add_argument("--reference-days", type=int, default=15)
+    p_cycle.add_argument("--congress", type=int, default=119)
+    p_cycle.add_argument("--audit-emit", default="releases/custody-head.json")
+    p_cycle.set_defaults(func=cmd_cycle)
+
     p_validate = sub.add_parser("validate", help="M3 gate: rank-correlate a release vs raters")
     p_validate.add_argument("--ratings", required=True, help="path to a ratings-*.json release")
     p_validate.add_argument("--reference", default="config/reference_ratings.yaml")
     p_validate.add_argument(
         "--allow-unverified", action="store_true",
-        help="include reference values not verified at source (peeking only, never for the gate)",
+        help="peek at unverified reference values; labeled, unservable, can never pass the gate",
     )
     p_validate.set_defaults(func=cmd_validate)
 
@@ -225,6 +311,8 @@ def main(argv: list[str] | None = None) -> int:
 
     p_serve = sub.add_parser("serve", help="read-only HTTP API over computed releases")
     p_serve.add_argument("--releases", default="releases")
+    p_serve.add_argument("--config", default=DEFAULT_CONFIG,
+                         help="outlets config for /outlets and health scoping")
     p_serve.add_argument("--host", default="0.0.0.0")
     p_serve.add_argument("--port", type=int, default=8477)
     p_serve.set_defaults(func=cmd_serve)

@@ -1,6 +1,6 @@
 [project]
 name = "tiltmeter"
-version = "0.1.0"
+version = "0.2.0"
 description = "Auditable, reproducible political-lean ratings for news outlets"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -10,6 +10,10 @@ dependencies = [
     "feedparser>=6.0",
     "trafilatura>=1.12",
     "pyyaml>=6.0",
+    "sentence-transformers>=3.0",
+    "scikit-learn>=1.5",
+    "numpy>=2.0",
+    "requests>=2.32",
 ]
 
 [project.scripts]
@@ -25,6 +29,15 @@ dev = [
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+# CPU-only torch: reproducibility runs on any machine, no GPU nondeterminism
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/tiltmeter"]

@@ -34,6 +34,12 @@ here is a usable rating yet.
 uv sync                      # install
 uv run tiltmeter ingest      # poll all 20 outlet feeds once
 uv run tiltmeter status      # article counts per outlet
+
+# freeze a corpus window into a verifiable manifest
+uv run tiltmeter snapshot --start 2026-07-10 --end 2026-07-24
+
+# fetch the orientation anchor: congressional floor speeches + party records
+uv run tiltmeter reference --end 2026-07-09 --days 10
 ```
 
 ## The auditability contract

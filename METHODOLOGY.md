@@ -169,6 +169,10 @@ embedding model, window length).
 for text-based measures (Grimmer & Stewart 2013). The bar is deliberately below
 perfect: given 46–57% inter-rater agreement in adjacent work, near-perfect
 correlation with any one rater would indicate overfitting to that rater, not truth.
+This is also why tiltmeter does not *train* on rater labels, unlike most open-source
+attempts (see docs/research.md §1.c): a model whose loss function is agreement with
+AllSides can never meaningfully disagree with AllSides — it is a copy of the panel,
+not an independent instrument. Validation-only use keeps disagreement informative.
 Fair-use note: reference ratings are facts (a rating value on a date), stored with
 retrieval dates, used only for validation.
 

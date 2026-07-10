@@ -2,9 +2,9 @@
 
 The chain-of-custody promise, made executable: content edits, deletions,
 history rewrites, and silent schema drift must all be caught by
-`tiltmeter audit`'s two checks (custody_verify + verify_contents). Plus the
-v1→v2 migration must preserve every fingerprint, or every manifest published
-before the migration would become unverifiable.
+`tiltmeter audit`'s two checks (custody_verify + verify_contents). Pre-v3
+stores are refused outright — early-development stores are recollected,
+never migrated — and that refusal is pinned here too.
 """
 
 import sqlite3
@@ -127,7 +127,9 @@ def test_fingerprint_covers_summary():
     db.custody_append(conn, "ingest", [h1, h2])
     conn.commit()
     assert h1 != h2
-    assert db.get_article_content(conn, h1) == ("Same headline", "", "First framing.")
+    assert db.split_article_payload(
+        db.get_contents(conn, [h1])[h1]
+    ) == ("Same headline", "", "First framing.")
     assert db.verify_contents(conn) == []
 
 

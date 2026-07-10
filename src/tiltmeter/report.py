@@ -102,6 +102,8 @@ def render(ratings: dict, stories: list, matrix: np.ndarray, articles: list) -> 
 def write(pages: dict[str, str], ratings: dict, out_dir: str | Path) -> Path:
     directory = Path(out_dir) / f"report-{ratings['snapshot_id']}"
     directory.mkdir(parents=True, exist_ok=True)
+    for stale in directory.glob("*.md"):
+        stale.unlink()  # regeneration must never leave pages from a prior run
     for filename, content in pages.items():
         (directory / filename).write_text(content, encoding="utf-8")
     return directory

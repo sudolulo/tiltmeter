@@ -29,7 +29,6 @@ class Orientation:
     sign: int  # +1 keep, -1 flip
     correlation: float  # spearman rho between axis and party-language proxy
     reliable: bool
-    proxy_by_outlet: tuple[float, ...]  # cos-to-R minus cos-to-D per outlet
 
 
 def party_means(conn: sqlite3.Connection) -> dict[str, np.ndarray]:
@@ -76,5 +75,4 @@ def orient_sign(axis_positions: list[float], proxy_values: list[float]) -> Orien
         sign=-1 if rho < 0 else 1,
         correlation=rho,
         reliable=abs(rho) >= MIN_ABS_CORRELATION,
-        proxy_by_outlet=tuple(float(p) for p in proxy_values),
     )

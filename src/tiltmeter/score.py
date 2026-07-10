@@ -16,7 +16,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from tiltmeter import embed, orient
+from tiltmeter import db, embed, orient
 from tiltmeter.cluster import Story, cluster_articles, coverage_matrix
 from tiltmeter.signals import selection
 
@@ -65,6 +65,15 @@ def compute(conn: sqlite3.Connection, manifest: dict, pipeline_version: str) -> 
     )
     s = orientation.sign
 
+    # the reference corpus is a scoring input the manifest does not pin, so
+    # its exact state is recorded here: same manifest + same reference state
+    # (both hashes in the output) is the full reproducibility precondition
+    speech_hashes = [
+        r[0] for r in conn.execute(
+            "SELECT content_hash FROM reference_speeches ORDER BY content_hash"
+        )
+    ]
+
     covered_counts = matrix.sum(axis=1)
     outlets_out = [
         {
@@ -93,6 +102,8 @@ def compute(conn: sqlite3.Connection, manifest: dict, pipeline_version: str) -> 
             "method": "party-mean speech embeddings (ADR-0003)",
             "correlation": round(orientation.correlation, 6),
             "reliable": orientation.reliable,
+            "reference_corpus_hash": db.items_hash(speech_hashes),
+            "n_reference_speeches": len(speech_hashes),
         },
         "outlets": outlets_out,
     }

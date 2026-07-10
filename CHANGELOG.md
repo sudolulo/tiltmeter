@@ -8,6 +8,43 @@ requires a version bump and, if it changes methodology, a decision record in
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-07-10
+
+Audit pass 2 (three angles over the pass-1 remediation): 23 findings, all
+fixed. The loop converges: pass 1 found 19, pass 2 found progressively
+narrower issues, each now pinned by a regression test.
+
+### Fixed
+
+- Entry-level savepoints in insert_article/insert_speech: a failure between
+  the content write and the metadata write rolls back both, so a batch
+  commit can never durably orphan unchained content.
+- cached_embed no longer runs DDL (moved to db.connect) and never commits
+  inside a caller's open batch — embedding mid-collection cannot break the
+  rows+chain atomicity contract.
+- cycle derives its window from UTC (was host-local date.today(): a TZ-ahead
+  host would mutate a published release id intra-day) and uses one instant
+  for start/end.
+- Ratings record the exact reference-corpus state (hash + speech count):
+  same manifest + same reference state is the full, checkable
+  reproducibility precondition.
+- validate: thin-sample raters (1-4 shared outlets) are recorded gate
+  failures, not tracebacks; exit codes are automation-safe (0 pass, 2 fail).
+- snapshot fails loudly when a manifested article's content row is missing
+  (was: silently smaller manifest masking store corruption).
+- audit fails on an empty store; emits an append-only custody-heads.jsonl
+  history alongside the head file (external anchoring against wholesale
+  chain recomputation).
+- report regeneration clears stale evidence pages; insert timestamps are
+  validated as timezone-aware and normalized to UTC (string-compared
+  windows stay chronological); file: URI paths no longer mkdir junk.
+- New `tiltmeter repair`: adopts custody-orphaned content (pre-0.8
+  interruptions, partial restores) as an explicit, visible 'adopt' chain
+  batch.
+- Cleanup sweep: shared _publish_release (run and cycle can't diverge),
+  README quickstart/status drift fixed, dead helpers and a vacuous test
+  assertion removed, remaining unpinned-encoding I/O fixed.
+
 ## [0.8.0] - 2026-07-10
 
 Full-codebase audit (8 finder angles, 42 candidates, 19 verified findings)
@@ -274,7 +311,8 @@ human attention and produce trustworthy corpus + fresh dry-run ratings.
   deliberately not used — news and opinion are rated separately by every
   incumbent rater).
 
-[Unreleased]: https://github.com/sudolulo/tiltmeter/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/sudolulo/tiltmeter/compare/v0.8.1...HEAD
+[0.8.1]: https://github.com/sudolulo/tiltmeter/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/sudolulo/tiltmeter/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/sudolulo/tiltmeter/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/sudolulo/tiltmeter/compare/v0.5.0...v0.6.0

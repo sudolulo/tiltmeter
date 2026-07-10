@@ -34,7 +34,7 @@ def _rows_in_window(conn: sqlite3.Connection, start: str, end: str) -> list[dict
         "SELECT o.name AS outlet, a.url, a.byline, a.published, a.observed_at,"
         " a.fetched_at, a.source, a.content_hash, c.text_z"
         " FROM articles a JOIN outlets o ON o.id = a.outlet_id"
-        " JOIN contents c ON c.content_hash = a.content_hash"
+        " LEFT JOIN contents c ON c.content_hash = a.content_hash"
         " WHERE a.observed_at >= ? AND a.observed_at < ?"
         " ORDER BY a.content_hash, a.url",
         (start, end),
@@ -42,6 +42,13 @@ def _rows_in_window(conn: sqlite3.Connection, start: str, end: str) -> list[dict
     rows = []
     titles: dict[str, str] = {}  # decompress each distinct payload once
     for outlet, url, byline, published, observed, fetched, source, chash, blob in cur:
+        if blob is None:
+            # a manifested article whose content is gone is store corruption;
+            # a silently smaller manifest would mask it — fail loudly instead
+            raise RuntimeError(
+                f"article {url} has no content row ({chash[:12]}…) — store is"
+                " corrupt; run tiltmeter audit"
+            )
         if chash not in titles:
             payload = zlib.decompress(blob).decode("utf-8")
             titles[chash] = db.split_article_payload(payload)[0]

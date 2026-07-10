@@ -100,7 +100,7 @@ def connect(db_path: str | Path) -> sqlite3.Connection:
     store — auditing above all — uses connect_readonly instead.
     """
     s = str(db_path)
-    if s != ":memory:":
+    if s != ":memory:" and not s.startswith("file:"):
         Path(s).parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(s)
     conn.execute("PRAGMA journal_mode=WAL")
@@ -113,6 +113,19 @@ def connect(db_path: str | Path) -> sqlite3.Connection:
             " delete the database (and stale releases) and recollect"
         )
     conn.executescript(SCHEMA_V3)
+    # the embeddings cache is derived data (custody-exempt, rebuildable); its
+    # DDL lives here so no pipeline call ever runs executescript — which would
+    # implicitly commit a half-collected batch — mid-transaction
+    legacy_cache = conn.execute(
+        "SELECT 1 FROM pragma_table_info('embeddings') WHERE name = 'content_hash'"
+    ).fetchone()
+    if legacy_cache:
+        conn.execute("DROP TABLE embeddings")
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS embeddings ("
+        " text_hash TEXT NOT NULL, model TEXT NOT NULL, vector BLOB NOT NULL,"
+        " PRIMARY KEY (text_hash, model))"
+    )
     conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
     conn.commit()
     return conn
@@ -148,13 +161,6 @@ def _store_content(conn: sqlite3.Connection, chash: str, payload: str) -> None:
     )
 
 
-def get_content(conn: sqlite3.Connection, chash: str) -> str | None:
-    row = conn.execute(
-        "SELECT text_z FROM contents WHERE content_hash = ?", (chash,)
-    ).fetchone()
-    return zlib.decompress(row[0]).decode("utf-8") if row else None
-
-
 def get_contents(conn: sqlite3.Connection, hashes: list[str]) -> dict[str, str]:
     """Bulk fetch: fingerprint → decompressed payload, chunked queries."""
     out: dict[str, str] = {}
@@ -178,14 +184,6 @@ def split_article_payload(payload: str) -> tuple[str, str, str]:
     return parts[0], parts[1], parts[2]
 
 
-def get_article_content(conn: sqlite3.Connection, chash: str) -> tuple[str, str, str] | None:
-    """(title, body, summary) for an article fingerprint, or None."""
-    payload = get_content(conn, chash)
-    if payload is None:
-        return None
-    return split_article_payload(payload)
-
-
 def outlet_id(conn: sqlite3.Connection, name: str, first_seen: str | None = None) -> int:
     """Get-or-create the outlet dimension row; outlet names are stored once."""
     row = conn.execute("SELECT id FROM outlets WHERE name = ?", (name,)).fetchone()
@@ -199,6 +197,22 @@ def outlet_id(conn: sqlite3.Connection, name: str, first_seen: str | None = None
 def have_url(conn: sqlite3.Connection, url: str) -> bool:
     row = conn.execute("SELECT 1 FROM articles WHERE url = ? LIMIT 1", (url,)).fetchone()
     return row is not None
+
+
+def utc_timestamp(value: str, field: str) -> str:
+    """Validate and normalize a timestamp to UTC ISO format.
+
+    Snapshot windows compare these as strings, so every stored timestamp must
+    be UTC and offset-aware or windowing silently becomes lexicographic
+    nonsense. Reject naive timestamps; normalize any offset to +00:00.
+    """
+    try:
+        parsed = datetime.fromisoformat(value)
+    except (ValueError, TypeError) as exc:
+        raise ValueError(f"{field} is not an ISO timestamp: {value!r}") from exc
+    if parsed.tzinfo is None:
+        raise ValueError(f"{field} must be timezone-aware UTC, got naive {value!r}")
+    return parsed.astimezone(timezone.utc).isoformat()
 
 
 def insert_article(
@@ -220,15 +234,26 @@ def insert_article(
     if the URL was already present."""
     if have_url(conn, url):
         return None
+    fetched_at = utc_timestamp(fetched_at, "fetched_at")
+    observed_at = utc_timestamp(observed_at, "observed_at") if observed_at else fetched_at
     chash = content_hash(title, text or "", summary or "")
-    _store_content(conn, chash, _article_payload(title, text or "", summary or ""))
-    conn.execute(
-        "INSERT INTO articles"
-        " (outlet_id, url, url_original, byline, published, observed_at, fetched_at, source,"
-        " content_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (outlet_id(conn, outlet, fetched_at), url, url_original, byline,
-         published, observed_at or fetched_at, fetched_at, source, chash),
-    )
+    # savepoint: content row and metadata row land together or not at all — a
+    # failure between them must never strand unchained content in the batch
+    conn.execute("SAVEPOINT insert_item")
+    try:
+        _store_content(conn, chash, _article_payload(title, text or "", summary or ""))
+        conn.execute(
+            "INSERT INTO articles"
+            " (outlet_id, url, url_original, byline, published, observed_at, fetched_at, source,"
+            " content_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (outlet_id(conn, outlet, fetched_at), url, url_original, byline,
+             published, observed_at, fetched_at, source, chash),
+        )
+    except Exception:
+        conn.execute("ROLLBACK TO insert_item")
+        conn.execute("RELEASE insert_item")
+        raise
+    conn.execute("RELEASE insert_item")
     return chash
 
 
@@ -252,13 +277,20 @@ def insert_speech(
     ).fetchone()
     if existing:
         return None
-    _store_content(conn, chash, text)
-    conn.execute(
-        "INSERT INTO reference_speeches"
-        " (day, granule, chamber, speaker, state, party, content_hash)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (day, granule, chamber, speaker, state, party, chash),
-    )
+    conn.execute("SAVEPOINT insert_item")
+    try:
+        _store_content(conn, chash, text)
+        conn.execute(
+            "INSERT INTO reference_speeches"
+            " (day, granule, chamber, speaker, state, party, content_hash)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (day, granule, chamber, speaker, state, party, chash),
+        )
+    except Exception:
+        conn.execute("ROLLBACK TO insert_item")
+        conn.execute("RELEASE insert_item")
+        raise
+    conn.execute("RELEASE insert_item")
     return chash
 
 
@@ -348,6 +380,23 @@ def verify_contents(conn: sqlite3.Connection) -> list[str]:
     ):
         problems.append(f"content outside the custody chain: {chash[:12]}…")
     return problems
+
+
+def custody_adopt_orphans(conn: sqlite3.Connection) -> dict | None:
+    """Chain any collected content that no chain entry covers, as an explicit
+    'adopt' batch. The chain honestly records that these items were adopted
+    late (interrupted pre-0.8 collector, restored backup) rather than
+    pretending they arrived normally. Returns the new entry, or None."""
+    orphans = [
+        r[0] for r in conn.execute(
+            "SELECT content_hash FROM contents"
+            " WHERE content_hash NOT IN (SELECT content_hash FROM custody_items)"
+            " ORDER BY content_hash"
+        )
+    ]
+    entry = custody_append(conn, "adopt", orphans)
+    conn.commit()
+    return entry
 
 
 def custody_verify(conn: sqlite3.Connection) -> list[str]:

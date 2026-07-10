@@ -117,7 +117,12 @@ def report(ratings: dict, reference: Reference) -> dict:
         if not values:
             missing.append(rater)
             continue
-        results[rater] = against_rater(ratings, values, rater)
+        try:
+            results[rater] = against_rater(ratings, values, rater)
+        except ValueError:
+            # 1-4 shared outlets: too thin to correlate — a failed rater is a
+            # recorded gate failure, never a crash with no artifact
+            missing.append(rater)
     peeking = bool(reference.unverified_used)
     gate_passed = (
         not missing

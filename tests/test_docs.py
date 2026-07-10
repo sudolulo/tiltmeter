@@ -155,7 +155,7 @@ def test_outlets_doc_in_sync_with_config():
     )
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
-    committed = (ROOT / "docs" / "outlets.md").read_text()
+    committed = (ROOT / "docs" / "outlets.md").read_text(encoding="utf-8")
     assert committed == mod.render(), (
         "docs/outlets.md is stale. Regenerate: uv run python scripts/gen_outlets_doc.py"
     )

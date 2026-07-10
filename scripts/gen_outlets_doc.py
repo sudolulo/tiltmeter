@@ -51,11 +51,11 @@ def render() -> str:
 if __name__ == "__main__":
     content = render()
     if "--check" in sys.argv:
-        current = TARGET.read_text() if TARGET.exists() else ""
+        current = TARGET.read_text(encoding="utf-8") if TARGET.exists() else ""
         if current != content:
             print("docs/outlets.md is stale; run: uv run python scripts/gen_outlets_doc.py")
             sys.exit(1)
         print("docs/outlets.md is in sync")
     else:
-        TARGET.write_text(content)
+        TARGET.write_text(content, encoding="utf-8")
         print(f"wrote {TARGET}")

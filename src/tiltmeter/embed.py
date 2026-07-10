@@ -29,16 +29,6 @@ _CHUNK = 400  # SQLite bound-parameter comfort zone
 
 _model = None  # loaded lazily: importing torch takes seconds and tests may not need it
 
-CACHE_SCHEMA = """
-CREATE TABLE IF NOT EXISTS embeddings (
-    text_hash TEXT NOT NULL,
-    model TEXT NOT NULL,
-    vector BLOB NOT NULL,
-    PRIMARY KEY (text_hash, model)
-);
-"""
-
-
 def passage(title: str, text: str | None, summary: str | None) -> str:
     """The text we embed for an article: headline plus lede (or feed summary
     as fallback). Everything read here comes from the fingerprinted payload."""
@@ -69,16 +59,11 @@ def cached_embed(conn: sqlite3.Connection, texts: list[str]) -> np.ndarray:
 
     The single entry point for every cached embedding in the pipeline —
     articles and speeches alike — so the cache invariants live in one place.
-    The cache is derived data (rebuildable, custody-exempt): a legacy-shaped
-    table is dropped and rebuilt rather than migrated.
+    The cache table is created by db.connect (derived data, custody-exempt);
+    no DDL happens here, so calling this mid-transaction can never implicitly
+    commit a half-collected batch.
     """
-    legacy = conn.execute(
-        "SELECT 1 FROM pragma_table_info('embeddings') WHERE name = 'content_hash'"
-    ).fetchone()
-    if legacy:
-        conn.execute("DROP TABLE embeddings")
-        conn.commit()
-    conn.executescript(CACHE_SCHEMA)
+    owns_transaction = not conn.in_transaction
     keys = [hashlib.sha256(t.encode("utf-8")).hexdigest() for t in texts]
     found: dict[str, np.ndarray] = {}
     unique = list(dict.fromkeys(keys))
@@ -99,7 +84,8 @@ def cached_embed(conn: sqlite3.Connection, texts: list[str]) -> np.ndarray:
             "INSERT OR IGNORE INTO embeddings (text_hash, model, vector) VALUES (?, ?, ?)",
             [(k, CACHE_MODEL_KEY, v.tobytes()) for k, v in zip(missing, vectors)],
         )
-        conn.commit()
+        if owns_transaction:
+            conn.commit()  # inside a caller's batch, cache rows ride its commit
         found.update(dict(zip(missing, vectors)))
     return np.stack([found[k] for k in keys])
 
@@ -113,16 +99,16 @@ def embed_hashes(conn: sqlite3.Connection, content_hashes: list[str]) -> np.ndar
     """
     from tiltmeter import db
 
-    payloads = db.get_contents(conn, list(dict.fromkeys(content_hashes)))
-    absent = [h for h in dict.fromkeys(content_hashes) if h not in payloads]
+    unique = list(dict.fromkeys(content_hashes))
+    payloads = db.get_contents(conn, unique)
+    absent = [h for h in unique if h not in payloads]
     if absent:
         raise ValueError(
             f"{len(absent)} manifest articles not in local corpus (first: {absent[0]})"
         )
-    passages = {}
-    for chash, payload in payloads.items():
-        title, text, summary = db.split_article_payload(payload)
-        passages[chash] = passage(title, text, summary)
-    vectors = cached_embed(conn, [passages[h] for h in dict.fromkeys(content_hashes)])
-    by_hash = dict(zip(dict.fromkeys(content_hashes), vectors))
-    return np.stack([by_hash[h] for h in content_hashes])
+    passages = {
+        chash: passage(*db.split_article_payload(payload))
+        for chash, payload in payloads.items()
+    }
+    # cached_embed dedups and preserves row order itself
+    return cached_embed(conn, [passages[h] for h in content_hashes])

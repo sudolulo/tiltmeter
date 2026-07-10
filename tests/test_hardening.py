@@ -47,13 +47,35 @@ def test_audit_refuses_missing_store(tmp_path):
     assert not (tmp_path / "nope.db").exists(), "refusal must not create a store"
 
 
+def test_insert_rejects_naive_timestamps():
+    """Windowing compares strings, so UTC-awareness is enforced at the door."""
+    conn = db.connect(":memory:")
+    with pytest.raises(ValueError, match="timezone-aware"):
+        db.insert_article(
+            conn, outlet="x", url="https://x.com/1", title="T", published=None,
+            fetched_at="2026-07-01", summary=None, text="b",
+        )
+    # offsets are normalized to UTC so string comparison stays chronological
+    h = db.insert_article(
+        conn, outlet="x", url="https://x.com/2", title="T", published=None,
+        fetched_at="2026-07-09T23:00:00-04:00", summary=None, text="b",
+    )
+    assert h
+    row = conn.execute("SELECT observed_at FROM articles").fetchone()[0]
+    assert row == "2026-07-10T03:00:00+00:00"
+
+
 def test_health_marks_bad_timestamps_stale_instead_of_crashing(tmp_path):
+    """Legacy or tampered rows can still hold junk timestamps; the monitoring
+    endpoint must mark them stale, never die."""
     conn = db.connect(tmp_path / "c.db")
     h = db.insert_article(
         conn, outlet="weird", url="https://w.com/1", title="T", published=None,
-        fetched_at="2026-07-01", summary=None, text="b",  # date-only, naive
+        fetched_at="2026-07-01T00:00:00+00:00", summary=None, text="b",
     )
     db.custody_append(conn, "ingest", [h])
+    # simulate legacy/tampered data: junk timestamp written around the API
+    conn.execute("UPDATE articles SET fetched_at = '2026-07-01' WHERE content_hash = ?", (h,))
     conn.commit()
     conn.close()
     health = serve.collection_health(tmp_path / "c.db", configured=["weird"])
@@ -83,7 +105,7 @@ def test_peek_validation_writes_unservable_filename(tmp_path):
     )
     rc = main(["validate", "--ratings", str(tmp_path / "ratings-2026-07-01_2026-07-15.json"),
                "--reference", str(ref), "--allow-unverified"])
-    assert rc == 0
+    assert rc == 2, "a peek is by definition not a passed gate: exit 2"
     peek = tmp_path / "validation-peek-2026-07-01_2026-07-15.json"
     assert peek.exists(), "peek must write the peek-prefixed file"
     assert not (tmp_path / "validation-2026-07-01_2026-07-15.json").exists()
@@ -91,6 +113,72 @@ def test_peek_validation_writes_unservable_filename(tmp_path):
     assert payload["peek"] is True and not payload["gate_passed"]
     # and the API cannot serve it: the peek prefix is not an artifact kind
     assert "validation-peek" not in {v for v in artifacts.KINDS.values()}
+
+
+def test_failed_insert_cannot_strand_unchained_content(monkeypatch):
+    """A failure between the content write and the metadata write must roll
+    back both — otherwise the batch commit would durably orphan content."""
+    conn = db.connect(":memory:")
+
+    def boom(*a, **k):
+        raise RuntimeError("simulated failure after content write")
+
+    monkeypatch.setattr(db, "outlet_id", boom)
+    with pytest.raises(RuntimeError, match="simulated"):
+        db.insert_article(
+            conn, outlet="x", url="https://x.com/1", title="T", published=None,
+            fetched_at="2026-07-10T00:00:00+00:00", summary=None, text="b",
+        )
+    conn.commit()
+    assert conn.execute("SELECT COUNT(*) FROM contents").fetchone()[0] == 0
+
+
+def test_repair_adopts_orphans_visibly():
+    conn = db.connect(":memory:")
+    db.insert_article(
+        conn, outlet="x", url="https://x.com/1", title="T", published=None,
+        fetched_at="2026-07-10T00:00:00+00:00", summary=None, text="b",
+    )
+    conn.commit()  # committed around the chain: the orphan case
+    assert any("outside the custody chain" in p for p in db.verify_contents(conn))
+    entry = db.custody_adopt_orphans(conn)
+    assert entry["n_items"] == 1
+    kind = conn.execute("SELECT kind FROM custody_log WHERE seq = ?", (entry["seq"],))
+    assert kind.fetchone()[0] == "adopt", "adoption must be visible in the chain"
+    assert db.verify_contents(conn) == []
+    assert db.custody_verify(conn) == []
+
+
+def test_snapshot_fails_loudly_on_missing_content(tmp_path):
+    from tiltmeter import snapshot
+
+    conn = db.connect(tmp_path / "s.db")
+    h = db.insert_article(
+        conn, outlet="x", url="https://x.com/1", title="T", published=None,
+        fetched_at="2026-07-10T00:00:00+00:00", summary=None, text="b",
+    )
+    db.custody_append(conn, "ingest", [h])
+    conn.commit()
+    conn.close()
+    raw = __import__("sqlite3").connect(tmp_path / "s.db")  # tamperer: no FK pragma
+    raw.execute("DELETE FROM contents WHERE content_hash = ?", (h,))
+    raw.commit()
+    raw.close()
+    with pytest.raises(RuntimeError, match="store is"):
+        snapshot.create(db.connect(tmp_path / "s.db"), "2026-07-10", "2026-07-11", "x")
+
+
+def test_cached_embed_never_commits_inside_a_callers_batch(monkeypatch):
+    """Embedding mid-collection must not commit the half-collected batch."""
+    conn = db.connect(":memory:")
+    monkeypatch.setattr(embed, "embed_texts",
+                        lambda texts: np.zeros((len(texts), 4), dtype=np.float32))
+    conn.execute("BEGIN")
+    conn.execute("INSERT INTO outlets (name, first_seen) VALUES ('x', 't')")
+    embed.cached_embed(conn, ["some text"])
+    assert conn.in_transaction, "cached_embed must not have committed the batch"
+    conn.rollback()
+    assert conn.execute("SELECT COUNT(*) FROM outlets").fetchone()[0] == 0
 
 
 def test_artifact_bytes_are_platform_pinned(tmp_path):
@@ -121,8 +209,6 @@ def test_dockerfile_model_pins_match_code():
 def test_serve_routes_cover_every_artifact_kind():
     """A new artifact kind must be servable by construction, not by memory."""
     source = (ROOT / "src/tiltmeter/serve.py").read_text(encoding="utf-8")
-    assert "kind in KINDS" in source
-    for kind in artifacts.KINDS:
-        assert f'"{kind}"' not in source.split("def do_GET")[1].split("case _")[0] or True
+    assert "kind in KINDS" in source, "artifact routes must come from artifacts.KINDS"
     # the generic arm makes per-kind arms unnecessary; ensure none regressed in
     assert source.count("SNAPSHOT_ID_RE.match(sid)") <= 3  # generic + evidence pair

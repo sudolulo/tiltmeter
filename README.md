@@ -24,9 +24,13 @@ technical spec with sources: [METHODOLOGY.md](METHODOLOGY.md).
 
 ## Status
 
-Pre-alpha (v0.1, milestone M1). The corpus collector is running; scoring lands in
-M2; the first validated ratings release requires ≥2 weeks of corpus (M3). Nothing
-here is a usable rating yet.
+Pre-alpha, pre-validation. The full pipeline runs — collection, scoring,
+sensitivity sweeps, custody audits, and the read-only API — and a deployment
+recomputes everything on a 6-hour `tiltmeter cycle`. The first validated
+ratings release awaits the pre-declared M3 gate (≥2 weeks of corpus, Spearman
+ρ ≥ 0.7 against both incumbent raters). Until then, published numbers carry
+explicit unreliability flags and exist to watch the instrument converge.
+Nothing here is a usable rating yet.
 
 ## Quickstart
 
@@ -52,8 +56,8 @@ Or with Docker (the pinned embedding model is baked into the image, so
 recomputation works offline):
 
 ```sh
-docker compose up -d                        # API on :8477
-docker compose run --rm tiltmeter ingest    # any pipeline command as one-shot
+docker compose up -d                  # API on :8477 + 6-hourly collector
+docker compose run --rm api ingest    # any pipeline command as one-shot
 ```
 
 tiltmeter is a **data layer**: it computes and serves ratings JSON plus evidence

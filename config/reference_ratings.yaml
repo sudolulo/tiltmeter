@@ -18,62 +18,82 @@ ratings:
   cs-monitor:
     allsides: {value: Center, verified: true, retrieved: 2026-07-10,
                note: "confirmed via AllSides source page, high confidence, July 2026"}
-    ad_fontes: {value: null}
+    ad_fontes: {value: -2.52, verified: true, retrieved: 2026-07-10,
+                source: "https://adfontesmedia.com/christian-science-monitor-bias-and-reliability/"}
   pbs-newshour:
     allsides: {value: Center, verified: false, retrieved: 2026-07-10}
-    ad_fontes: {value: null}
+    ad_fontes: {value: -9.55, verified: true, retrieved: 2026-07-10,
+                source: "https://adfontesmedia.com/pbs-newshour-bias-and-reliability/"}
   npr:
     allsides: {value: Lean Left, verified: false, retrieved: 2026-07-10}
-    ad_fontes: {value: null}
+    ad_fontes: {value: -4.36, verified: true, retrieved: 2026-07-10,
+                source: "https://adfontesmedia.com/npr-bias-and-reliability/"}
   axios:
     allsides: {value: Lean Left, verified: false, retrieved: 2026-07-10}
-    ad_fontes: {value: null}
+    ad_fontes: {value: -3.32, verified: true, retrieved: 2026-07-10,
+                source: "https://adfontesmedia.com/axios-bias-and-reliability/"}
   the-hill:
     allsides: {value: Center, verified: false, retrieved: 2026-07-10}
-    ad_fontes: {value: null}
+    ad_fontes: {value: -1.54, verified: true, retrieved: 2026-07-10,
+                source: "https://adfontesmedia.com/hill-bias-and-reliability/"}
   nytimes:
     allsides: {value: Lean Left, verified: false, retrieved: 2026-07-10}
-    ad_fontes: {value: null}
+    ad_fontes: {value: -8.02, verified: true, retrieved: 2026-07-10,
+                source: "https://adfontesmedia.com/new-york-times-bias-and-reliability/"}
   washington-post:
     allsides: {value: Lean Left, verified: false, retrieved: 2026-07-10}
-    ad_fontes: {value: null}
+    ad_fontes: {value: -7.04, verified: true, retrieved: 2026-07-10,
+                source: "https://adfontesmedia.com/washington-post-bias-and-reliability/"}
   cbs-news:
     allsides: {value: Lean Left, verified: false, retrieved: 2026-07-10}
-    ad_fontes: {value: null}
+    ad_fontes: {value: -2.87, verified: true, retrieved: 2026-07-10,
+                source: "https://adfontesmedia.com/cbs-bias-and-reliability/"}
   nbc-news:
     allsides: {value: Lean Left, verified: false, retrieved: 2026-07-10}
-    ad_fontes: {value: null}
+    ad_fontes: {value: -5.1, verified: true, retrieved: 2026-07-10,
+                source: "https://adfontesmedia.com/nbc-bias-and-reliability/"}
   huffpost:
     allsides: {value: Left, verified: false, retrieved: 2026-07-10}
-    ad_fontes: {value: null}
+    ad_fontes: {value: -10.76, verified: true, retrieved: 2026-07-10,
+                source: "https://adfontesmedia.com/huffpost-bias-and-reliability/"}
   mother-jones:
     allsides: {value: Left, verified: false, retrieved: 2026-07-10}
-    ad_fontes: {value: null}
+    ad_fontes: {value: -15.13, verified: true, retrieved: 2026-07-10,
+                source: "https://adfontesmedia.com/mother-jones-bias-and-reliability/"}
   the-nation:
     allsides: {value: Left, verified: false, retrieved: 2026-07-10}
-    ad_fontes: {value: null}
+    ad_fontes: {value: -18.92, verified: true, retrieved: 2026-07-10,
+                source: "https://adfontesmedia.com/nation-bias-and-reliability/"}
   newsweek:
     allsides: {value: Center, verified: false, retrieved: 2026-07-10}
-    ad_fontes: {value: null}
+    ad_fontes: {value: -1.78, verified: true, retrieved: 2026-07-10,
+                source: "https://adfontesmedia.com/newsweek-bias-and-reliability/"}
   national-review:
     allsides: {value: Right, verified: false, retrieved: 2026-07-10}
-    ad_fontes: {value: null}
+    ad_fontes: {value: 12.67, verified: true, retrieved: 2026-07-10,
+                source: "https://adfontesmedia.com/national-review-bias-and-reliability/"}
   washington-examiner:
     allsides: {value: Lean Right, verified: false, retrieved: 2026-07-10}
-    ad_fontes: {value: null}
+    ad_fontes: {value: 11.15, verified: true, retrieved: 2026-07-10,
+                source: "https://adfontesmedia.com/washington-examiner-bias-and-reliability/"}
   ny-post:
     allsides: {value: Lean Right, verified: false, retrieved: 2026-07-10}
-    ad_fontes: {value: null}
+    ad_fontes: {value: 9.51, verified: true, retrieved: 2026-07-10,
+                source: "https://adfontesmedia.com/new-york-post-bias-and-reliability/"}
   fox-news:
     allsides: {value: Right, verified: false, retrieved: 2026-07-10,
                note: "web news rating; verify current after July 2025 AllSides review"}
-    ad_fontes: {value: null}
+    ad_fontes: {value: 11.24, verified: true, retrieved: 2026-07-10,
+                source: "https://adfontesmedia.com/fox-news-bias-and-reliability/"}
   daily-wire:
     allsides: {value: Right, verified: false, retrieved: 2026-07-10}
-    ad_fontes: {value: null}
+    ad_fontes: {value: 13.18, verified: true, retrieved: 2026-07-10,
+                source: "https://adfontesmedia.com/daily-wire-bias-and-reliability/"}
   breitbart:
     allsides: {value: Right, verified: false, retrieved: 2026-07-10}
-    ad_fontes: {value: null}
+    ad_fontes: {value: 13.57, verified: true, retrieved: 2026-07-10,
+                source: "https://adfontesmedia.com/breitbart-bias-and-reliability/"}
   newsmax:
     allsides: {value: Right, verified: false, retrieved: 2026-07-10}
-    ad_fontes: {value: null}
+    ad_fontes: {value: 13.32, verified: true, retrieved: 2026-07-10,
+                source: "https://adfontesmedia.com/newsmax-bias-and-reliability/"}

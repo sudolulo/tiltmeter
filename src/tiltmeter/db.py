@@ -92,14 +92,17 @@ CREATE INDEX IF NOT EXISTS idx_custody_items_seq ON custody_items (seq);
 
 
 def connect(db_path: str | Path) -> sqlite3.Connection:
-    """Open the database, creating the schema if needed. Pre-v3 stores are
-    refused: this is early development and old stores are recollected, not
-    migrated (the migration machinery was deleted with them)."""
-    if isinstance(db_path, str) and db_path != ":memory:" and not db_path.startswith("file:"):
-        Path(db_path).parent.mkdir(parents=True, exist_ok=True)
-    elif isinstance(db_path, Path):
-        db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(db_path)
+    """Open the store for collection, creating the schema if needed. Pre-v3
+    stores are refused: this is early development and old stores are
+    recollected, not migrated (the migration machinery was deleted with them).
+
+    This call WRITES (schema creation, WAL). Anything that must not alter the
+    store — auditing above all — uses connect_readonly instead.
+    """
+    s = str(db_path)
+    if s != ":memory:":
+        Path(s).parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(s)
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
     version = conn.execute("PRAGMA user_version").fetchone()[0]
@@ -113,6 +116,18 @@ def connect(db_path: str | Path) -> sqlite3.Connection:
     conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
     conn.commit()
     return conn
+
+
+def connect_readonly(db_path: str | Path) -> sqlite3.Connection:
+    """Open an existing store without the ability to change a single byte.
+
+    Refuses missing files loudly — an audit that silently creates an empty
+    store and passes would be worse than no audit at all.
+    """
+    path = Path(db_path)
+    if not path.is_file():
+        raise FileNotFoundError(f"no store at {path} — refusing to audit nothing")
+    return sqlite3.connect(f"file:{path}?mode=ro", uri=True)
 
 
 def _article_payload(title: str, text: str, summary: str) -> str:
@@ -140,15 +155,35 @@ def get_content(conn: sqlite3.Connection, chash: str) -> str | None:
     return zlib.decompress(row[0]).decode("utf-8") if row else None
 
 
+def get_contents(conn: sqlite3.Connection, hashes: list[str]) -> dict[str, str]:
+    """Bulk fetch: fingerprint → decompressed payload, chunked queries."""
+    out: dict[str, str] = {}
+    for i in range(0, len(hashes), 400):
+        chunk = hashes[i : i + 400]
+        placeholders = ",".join("?" * len(chunk))
+        for chash, blob in conn.execute(
+            f"SELECT content_hash, text_z FROM contents"
+            f" WHERE content_hash IN ({placeholders})",
+            chunk,
+        ):
+            out[chash] = zlib.decompress(blob).decode("utf-8")
+    return out
+
+
+def split_article_payload(payload: str) -> tuple[str, str, str]:
+    """(title, body, summary) from a fingerprinted article payload."""
+    parts = payload.split("\x1f", 2)
+    while len(parts) < 3:
+        parts.append("")
+    return parts[0], parts[1], parts[2]
+
+
 def get_article_content(conn: sqlite3.Connection, chash: str) -> tuple[str, str, str] | None:
     """(title, body, summary) for an article fingerprint, or None."""
     payload = get_content(conn, chash)
     if payload is None:
         return None
-    parts = payload.split("\x1f", 2)
-    while len(parts) < 3:
-        parts.append("")
-    return parts[0], parts[1], parts[2]
+    return split_article_payload(payload)
 
 
 def outlet_id(conn: sqlite3.Connection, name: str, first_seen: str | None = None) -> int:
@@ -256,7 +291,12 @@ def custody_head(conn: sqlite3.Connection) -> dict:
 
 def custody_append(conn: sqlite3.Connection, kind: str, new_hashes: list[str]) -> dict | None:
     """Chain one batch of newly collected fingerprints. Empty batches are not
-    recorded — the chain logs data arrival, not polling."""
+    recorded — the chain logs data arrival, not polling.
+
+    Does NOT commit: the caller commits chain entry and collected rows in ONE
+    transaction, so no crash window exists in which rows are durable but
+    unchained. Collectors must never commit collected rows separately.
+    """
     if not new_hashes:
         return None
     head = custody_head(conn)
@@ -273,7 +313,6 @@ def custody_append(conn: sqlite3.Connection, kind: str, new_hashes: list[str]) -
         "INSERT INTO custody_items (seq, content_hash) VALUES (?, ?)",
         [(seq, h) for h in new_hashes],
     )
-    conn.commit()
     return {"seq": seq, "entry_hash": entry, "n_items": len(new_hashes)}
 
 
@@ -301,6 +340,13 @@ def verify_contents(conn: sqlite3.Connection) -> list[str]:
         " WHERE content_hash NOT IN (SELECT content_hash FROM contents)"
     ):
         problems.append(f"custody-chained content deleted: {chash[:12]}…")
+    # the reverse direction: collected content that no chain entry covers —
+    # either an interrupted collector (a bug) or rows inserted around the chain
+    for (chash,) in conn.execute(
+        "SELECT content_hash FROM contents"
+        " WHERE content_hash NOT IN (SELECT content_hash FROM custody_items)"
+    ):
+        problems.append(f"content outside the custody chain: {chash[:12]}…")
     return problems
 
 

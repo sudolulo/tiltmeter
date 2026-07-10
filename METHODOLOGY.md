@@ -160,8 +160,12 @@ label — mitigated by the evidence pages (D10) and the plain-language docs laye
 
 **Decision**: `config/reference_ratings.yaml` holds published AllSides (5-point,
 mapped to −2..+2) and Ad Fontes (numeric) ratings with retrieval dates, used for
-validation only. The v1 gate: Spearman rank correlation ρ ≥ 0.7 against both raters
-over the 20-outlet sample. Every release also publishes a parameter sensitivity
+validation only. The v1 gate: Spearman rank correlation (tie-averaged ranks —
+order-invariant on the 5-point scale's guaranteed ties) ρ ≥ 0.7 against both
+raters over the 20-outlet sample; a rater with no verified values is a missing
+rater and fails the gate outright. Unverified reference values are refused;
+peeking past that is labeled `peek: true`, written to a `validation-peek-*` file
+the public API never serves, and can never pass the gate. Every release also publishes a parameter sensitivity
 sweep: how much ratings move under alternative tunables (clustering threshold,
 embedding model, window length).
 

@@ -38,7 +38,7 @@ benchmark for numerical claim verification (arXiv 2403.17169), Full Fact's
 prototype Stats Checker verifying claims against official statistics, and the
 CLEF CheckThat! lab series.
 
-The costs, honestly: (1) **claim extraction requires an NLP model**, which
+The costs, honestly: (1) **finding the checkable claims inside articles requires a language model** (software that reads sentences and pulls out statements like “unemployment fell to 3.9%”), which
 collides with METHODOLOGY D8 — resolvable only via a documented carve-out where
 models may *extract and align* claims but never *evaluate* them, the mechanical
 record-comparison doing all evaluation, with published human-audited extraction

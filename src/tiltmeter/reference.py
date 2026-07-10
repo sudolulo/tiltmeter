@@ -161,7 +161,11 @@ def ingest_day(conn: sqlite3.Connection, day: str, zip_bytes: bytes, members: di
                 if chash:
                     counts["speeches"] += 1
                     counts["hashes"].append(chash)
+    # rows + chain entry become durable together: same rule as ingest
+    entry = db.custody_append(conn, "reference", counts["hashes"])
     conn.commit()
+    if entry:
+        log.info("%s: custody seq %d chains %d speeches", day, entry["seq"], entry["n_items"])
     return counts
 
 
@@ -170,7 +174,6 @@ def fetch_range(conn: sqlite3.Connection, end_day: str, session_days: int, congr
     members = load_members(congress)
     http = requests.Session()
     totals = {"days": 0, "speeches": 0, "unmatched": 0, "skipped": 0}
-    run_hashes: list[str] = []
     cursor = date.fromisoformat(end_day)
     attempts = 0
     while totals["days"] < session_days and attempts < session_days * 5:
@@ -188,13 +191,14 @@ def fetch_range(conn: sqlite3.Connection, end_day: str, session_days: int, congr
             totals["skipped"] += 1
             log.info("%s: no Record (recess/weekend)", day)
             continue
-        counts = ingest_day(conn, day, zip_bytes, members)
+        try:
+            counts = ingest_day(conn, day, zip_bytes, members)
+        except Exception as exc:  # noqa: BLE001 - one bad day must not poison the next batch
+            conn.rollback()
+            log.error("%s: day failed, rolled back: %s", day, exc)
+            continue
         totals["days"] += 1
         totals["speeches"] += counts["speeches"]
         totals["unmatched"] += counts["unmatched"]
-        run_hashes.extend(counts["hashes"])
         log.info("%s: %d speeches (%d unmatched)", day, counts["speeches"], counts["unmatched"])
-    entry = db.custody_append(conn, "reference", run_hashes)
-    if entry:
-        log.info("custody: seq %d chains %d new items", entry["seq"], entry["n_items"])
     return totals

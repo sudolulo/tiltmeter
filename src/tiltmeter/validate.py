@@ -2,10 +2,15 @@
 
 The M3 gate (METHODOLOGY.md D7), as code: Spearman rank correlation between
 tiltmeter's scores and each incumbent rater's published ratings, with the
-pre-declared pass bar ρ ≥ 0.7 against both. This is validation only — rater
-values never touch scoring — and it refuses to report against reference
-entries that haven't been verified at the source, because a gate checked
-against sloppy data isn't a gate.
+pre-declared pass bar ρ ≥ 0.7 against **both** raters — a gate that can pass
+with a rater missing is not the declared gate, so a missing or empty rater
+fails it outright. This is validation only: rater values never touch scoring.
+
+Reference values that haven't been verified at the source are refused by
+default. Peeking past that (--allow-unverified) is allowed for watching the
+instrument converge, but a peek can never pass the gate, is labeled
+`peek: true` inside the artifact, and is written to a `validation-peek-*`
+file that the public API does not serve.
 
 A permutation p-value (fixed seed) accompanies each ρ: the probability of a
 correlation at least this strong if outlet order were random. With n = 20 it
@@ -17,9 +22,10 @@ from dataclasses import dataclass
 import numpy as np
 import yaml
 
-from tiltmeter.orient import _spearman
+from tiltmeter.stats import spearman
 
 GATE_RHO = 0.7
+REQUIRED_RATERS = ("allsides", "ad_fontes")
 PERMUTATIONS = 10_000
 PERMUTATION_SEED = 20260724  # gate day
 ALLSIDES_SCALE = {"Left": -2, "Lean Left": -1, "Center": 0, "Lean Right": 1, "Right": 2}
@@ -35,34 +41,43 @@ class RaterResult:
     outlets_used: tuple[str, ...]
 
 
-def load_reference(path: str, *, allow_unverified: bool = False) -> dict:
-    """Reference ratings, refusing unverified entries unless explicitly peeking."""
-    with open(path) as f:
+@dataclass(frozen=True)
+class Reference:
+    by_rater: dict[str, dict[str, float]]
+    unverified_used: list[str]  # entries folded into the math while peeking
+    unverified_skipped: list[str]  # entries excluded in strict mode
+
+
+def load_reference(path: str, *, allow_unverified: bool = False) -> Reference:
+    """Reference ratings; unverified entries are excluded unless peeking, and
+    are always reported either way."""
+    with open(path, encoding="utf-8") as f:
         ratings = yaml.safe_load(f)["ratings"]
-    out: dict[str, dict[str, float]] = {"allsides": {}, "ad_fontes": {}}
-    unverified: list[str] = []
+    by_rater: dict[str, dict[str, float]] = {r: {} for r in REQUIRED_RATERS}
+    used: list[str] = []
+    skipped: list[str] = []
     for outlet, raters in ratings.items():
-        for rater in ("allsides", "ad_fontes"):
+        for rater in REQUIRED_RATERS:
             entry = raters.get(rater) or {}
             value = entry.get("value")
             if value is None:
                 continue
             if not entry.get("verified", False):
-                unverified.append(f"{outlet}/{rater}")
                 if not allow_unverified:
+                    skipped.append(f"{outlet}/{rater}")
                     continue
-            out[rater][outlet] = (
+                used.append(f"{outlet}/{rater}")
+            by_rater[rater][outlet] = (
                 float(ALLSIDES_SCALE[value]) if rater == "allsides" else float(value)
             )
-    if unverified and not allow_unverified:
-        out["skipped_unverified"] = sorted(unverified)
-    return out
+    return Reference(by_rater=by_rater, unverified_used=sorted(used),
+                     unverified_skipped=sorted(skipped))
 
 
 def _permutation_p(scores: np.ndarray, reference: np.ndarray, observed: float) -> float:
     rng = np.random.default_rng(PERMUTATION_SEED)
     hits = sum(
-        abs(_spearman(scores, rng.permutation(reference))) >= abs(observed)
+        abs(spearman(scores, rng.permutation(reference))) >= abs(observed)
         for _ in range(PERMUTATIONS)
     )
     return (hits + 1) / (PERMUTATIONS + 1)
@@ -78,7 +93,7 @@ def against_rater(ratings: dict, reference_values: dict[str, float], rater: str)
         )
     a = np.array([ours[o] for o in common])
     b = np.array([reference_values[o] for o in common])
-    rho = _spearman(a, b)
+    rho = spearman(a, b)
     return RaterResult(
         rater=rater,
         n=len(common),
@@ -89,19 +104,37 @@ def against_rater(ratings: dict, reference_values: dict[str, float], rater: str)
     )
 
 
-def report(ratings: dict, reference: dict) -> dict:
-    """The full validation artifact for a ratings release."""
-    results = {}
-    for rater in ("allsides", "ad_fontes"):
-        if reference.get(rater):
-            results[rater] = against_rater(ratings, reference[rater], rater)
+def report(ratings: dict, reference: Reference) -> dict:
+    """The full validation artifact for a ratings release.
+
+    The gate requires every declared rater to be present with a real sample
+    AND to pass — and can never pass while peeking at unverified data.
+    """
+    results: dict[str, RaterResult] = {}
+    missing: list[str] = []
+    for rater in REQUIRED_RATERS:
+        values = reference.by_rater.get(rater) or {}
+        if not values:
+            missing.append(rater)
+            continue
+        results[rater] = against_rater(ratings, values, rater)
+    peeking = bool(reference.unverified_used)
+    gate_passed = (
+        not missing
+        and not peeking
+        and all(r.passes_gate for r in results.values())
+        and ratings["orientation"]["reliable"]
+    )
     return {
         "snapshot_id": ratings["snapshot_id"],
         "corpus_hash": ratings["corpus_hash"],
         "pipeline_version": ratings["pipeline_version"],
         "gate_rho": GATE_RHO,
         "orientation_reliable": ratings["orientation"]["reliable"],
-        "skipped_unverified": reference.get("skipped_unverified", []),
+        "peek": peeking,
+        "unverified_used": reference.unverified_used,
+        "skipped_unverified": reference.unverified_skipped,
+        "raters_missing": missing,
         "raters": {
             name: {
                 "n": r.n,
@@ -111,7 +144,5 @@ def report(ratings: dict, reference: dict) -> dict:
             }
             for name, r in results.items()
         },
-        "gate_passed": bool(results)
-        and all(r.passes_gate for r in results.values())
-        and ratings["orientation"]["reliable"],
+        "gate_passed": gate_passed,
     }

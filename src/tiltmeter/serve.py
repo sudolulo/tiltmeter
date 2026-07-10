@@ -5,18 +5,19 @@ them. This module is the delivery end — a small, read-only HTTP API over the
 releases directory. No framework, no state, no writes: every response is a
 file the pipeline already produced, so serving adds nothing to audit.
 
-  GET /health                      liveness + what's available
+  GET /health                      liveness + per-outlet collection freshness
+  GET /custody                     live custody-chain head
   GET /outlets                     outlet list incl. sourced ownership data
   GET /ratings                     list of snapshot ids with ratings
   GET /ratings/latest              newest ratings.json
-  GET /ratings/{snapshot_id}       specific ratings.json
-  GET /stories/{snapshot_id}       story clusters: who covered what, headlines
-  GET /manifests/{snapshot_id}     corpus manifest (for verifiers)
+  GET /{kind}/{snapshot_id}        any release artifact; kinds come straight
+                                   from artifacts.KINDS (ratings, stories,
+                                   manifests, validation, sweeps)
   GET /evidence/{snapshot_id}/     evidence index + per-outlet pages
 
 CORS is wide open: the data is public and consumers are other people's
 frontends. Snapshot ids sort lexicographically by date, so "latest" is just
-the maximum.
+the maximum. Peek artifacts (validation-peek-*) are deliberately NOT served.
 """
 
 import json
@@ -26,6 +27,11 @@ import sqlite3
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+
+import yaml
+
+from tiltmeter import db as tdb
+from tiltmeter.artifacts import KINDS
 
 log = logging.getLogger("tiltmeter.serve")
 
@@ -38,15 +44,17 @@ STALE_AFTER_HOURS = 36.0  # two missed 6h collection cycles plus slack
 def collection_health(db_path: Path, configured: list[str] | None = None) -> dict | None:
     """Hours since each outlet last yielded an article — the monitoring hook.
 
-    A silently dead feed is the main way two unattended weeks go wrong; this
-    makes it one HTTP request to notice. Only *configured* outlets count:
-    outlets retired from config must not alarm forever, and configured
-    outlets with no articles at all are exactly the dead-feed case (reported
-    as null hours and stale). Returns None when no corpus exists.
+    A silently dead feed is the main way unattended weeks go wrong; this makes
+    it one HTTP request to notice. Only *configured* outlets count: outlets
+    retired from config must not alarm forever, and configured outlets with no
+    articles at all are exactly the dead-feed case (null hours, stale). A
+    timestamp the parser can't handle marks its outlet stale rather than
+    taking the endpoint down — monitoring must not die when data gets weird.
+    Returns None when no corpus exists.
     """
     if not db_path.is_file():
         return None
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     try:
         rows = conn.execute(
             "SELECT o.name, MAX(a.fetched_at) FROM articles a"
@@ -57,11 +65,15 @@ def collection_health(db_path: Path, configured: list[str] | None = None) -> dic
     finally:
         conn.close()
     now = datetime.now(timezone.utc)
-    hours: dict[str, float | None] = {
-        outlet: round((now - datetime.fromisoformat(ts)).total_seconds() / 3600, 1)
-        for outlet, ts in rows
-        if ts
-    }
+    hours: dict[str, float | None] = {}
+    for outlet, ts in rows:
+        try:
+            parsed = datetime.fromisoformat(ts)
+            if parsed.tzinfo is None:
+                raise ValueError("naive timestamp")
+            hours[outlet] = round((now - parsed).total_seconds() / 3600, 1)
+        except (ValueError, TypeError):
+            hours[outlet] = None  # unparseable = can't vouch for freshness = stale
     if configured is not None:
         hours = {o: hours.get(o) for o in configured}
     return {
@@ -81,11 +93,17 @@ def _ratings_ids(releases: Path) -> list[str]:
 def make_handler(releases: Path, outlets_config: Path | None = None, db_path: Path | None = None):
     outlets_payload = None
     configured_names: list[str] | None = None
-    if outlets_config and outlets_config.is_file():
-        import yaml
-
-        outlets_payload = {"outlets": yaml.safe_load(outlets_config.read_text())["outlets"]}
-        configured_names = [o["name"] for o in outlets_payload["outlets"]]
+    if outlets_config:
+        if outlets_config.is_file():
+            outlets_payload = {
+                "outlets": yaml.safe_load(outlets_config.read_text(encoding="utf-8"))["outlets"]
+            }
+            configured_names = [o["name"] for o in outlets_payload["outlets"]]
+        else:
+            log.warning(
+                "outlets config %s not found: /outlets disabled, health unscoped",
+                outlets_config,
+            )
 
     class Handler(BaseHTTPRequestHandler):
         server_version = "tiltmeter"
@@ -112,45 +130,36 @@ def make_handler(releases: Path, outlets_config: Path | None = None, db_path: Pa
 
         def do_GET(self) -> None:  # noqa: N802 - stdlib API
             parts = [p for p in self.path.split("?")[0].split("/") if p]
-            ids = _ratings_ids(releases)
             match parts:
-                case ["custody"] if db_path is not None and db_path.is_file():
-                    import sqlite3 as _sq
-
-                    from tiltmeter import db as tdb
-
-                    conn = _sq.connect(f"file:{db_path}?mode=ro", uri=True)
-                    try:
-                        head = tdb.custody_head(conn)
-                        n = conn.execute("SELECT COUNT(*) FROM contents").fetchone()[0]
-                        self._json(200, {"custody_head": head, "n_contents": n})
-                    except _sq.OperationalError:
-                        self._json(404, {"error": "no custody chain yet"})
-                    finally:
-                        conn.close()
                 case ["health"]:
-                    payload = {"status": "ok", "ratings": ids}
+                    payload = {"status": "ok", "ratings": _ratings_ids(releases)}
                     if db_path is not None:
                         payload["collection"] = collection_health(db_path, configured_names)
                         if payload["collection"] and payload["collection"]["stale_outlets"]:
                             payload["status"] = "degraded"
                     self._json(200, payload)
-                case ["ratings"]:
-                    self._json(200, {"snapshots": ids})
-                case ["ratings", "latest"] if ids:
-                    self._file(releases / f"ratings-{ids[-1]}.json", "application/json")
-                case ["ratings", sid] if SNAPSHOT_ID_RE.match(sid):
-                    self._file(releases / f"ratings-{sid}.json", "application/json")
+                case ["custody"] if db_path is not None and db_path.is_file():
+                    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+                    try:
+                        head = tdb.custody_head(conn)
+                        n = conn.execute("SELECT COUNT(*) FROM contents").fetchone()[0]
+                        self._json(200, {"custody_head": head, "n_contents": n})
+                    except sqlite3.OperationalError:
+                        self._json(404, {"error": "no custody chain yet"})
+                    finally:
+                        conn.close()
                 case ["outlets"] if outlets_payload:
                     self._json(200, outlets_payload)
-                case ["stories", sid] if SNAPSHOT_ID_RE.match(sid):
-                    self._file(releases / f"stories-{sid}.json", "application/json")
-                case ["validation", sid] if SNAPSHOT_ID_RE.match(sid):
-                    self._file(releases / f"validation-{sid}.json", "application/json")
-                case ["sweeps", sid] if SNAPSHOT_ID_RE.match(sid):
-                    self._file(releases / f"sweep-{sid}.json", "application/json")
-                case ["manifests", sid] if SNAPSHOT_ID_RE.match(sid):
-                    self._file(releases / f"manifest-{sid}.json", "application/json")
+                case ["ratings"]:
+                    self._json(200, {"snapshots": _ratings_ids(releases)})
+                case ["ratings", "latest"]:
+                    ids = _ratings_ids(releases)
+                    if ids:
+                        self._file(releases / f"ratings-{ids[-1]}.json", "application/json")
+                    else:
+                        self._json(404, {"error": "no ratings yet"})
+                case [kind, sid] if kind in KINDS and SNAPSHOT_ID_RE.match(sid):
+                    self._file(releases / f"{KINDS[kind]}-{sid}.json", "application/json")
                 case ["evidence", sid] if SNAPSHOT_ID_RE.match(sid):
                     self._file(releases / f"report-{sid}" / "index.md", "text/markdown")
                 case ["evidence", sid, page] if (

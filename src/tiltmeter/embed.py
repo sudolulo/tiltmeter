@@ -1,15 +1,18 @@
-"""How does the pipeline see that two articles are about the same story?
+"""How does the pipeline see that two texts are alike?
 
-Each article's headline + opening text is turned into an embedding — a vector
-of numbers where similar texts land close together. Embeddings are used ONLY
-to group similar articles (and to compare poles of the axis to congressional
-language); they never judge anything (METHODOLOGY.md D8).
+Texts are turned into embeddings — vectors where similar texts land close
+together. Embeddings only ever *group* text (story clustering, axis
+orientation); they never judge anything (METHODOLOGY.md D8).
 
-The model is pinned by name and revision and runs on CPU so that anyone,
-anywhere, reproduces the same vectors. Vectors are cached in SQLite keyed by
-content fingerprint: an article's embedding is computed once, ever.
+One cache, one rule: a vector is stored under the SHA-256 of the exact text
+that was embedded, plus the exact model name@revision that embedded it.
+Change the passage recipe, the model, or the pinned revision and every key
+changes with it — the cache cannot serve a stale or mismatched vector, by
+construction. Lookups are chunked queries proportional to the request, never
+scans of the whole cache.
 """
 
+import hashlib
 import sqlite3
 
 import numpy as np
@@ -19,25 +22,26 @@ MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
 MODEL_REVISION = "c9745ed1d9f207416be6d2e6f8de32d1f16199bf"
 LEDE_WORDS = 40  # headline + this many words of body ≈ headline + lede
 
+# The cache key's model column carries the full pin: bumping the revision can
+# never silently reuse old vectors.
+CACHE_MODEL_KEY = f"{MODEL_NAME}@{MODEL_REVISION}"
+_CHUNK = 400  # SQLite bound-parameter comfort zone
+
 _model = None  # loaded lazily: importing torch takes seconds and tests may not need it
 
 CACHE_SCHEMA = """
 CREATE TABLE IF NOT EXISTS embeddings (
-    content_hash TEXT NOT NULL,
+    text_hash TEXT NOT NULL,
     model TEXT NOT NULL,
     vector BLOB NOT NULL,
-    PRIMARY KEY (content_hash, model)
+    PRIMARY KEY (text_hash, model)
 );
 """
 
 
 def passage(title: str, text: str | None, summary: str | None) -> str:
-    """The text we embed: headline plus lede (or feed summary as fallback).
-
-    Everything read here is inside the fingerprinted payload, so two articles
-    with identical passages always share a fingerprint and vice versa — the
-    embedding cache can never serve the wrong vector.
-    """
+    """The text we embed for an article: headline plus lede (or feed summary
+    as fallback). Everything read here comes from the fingerprinted payload."""
     body = text or summary or ""
     lede = " ".join(body.split()[:LEDE_WORDS])
     return f"{title}. {lede}".strip()
@@ -60,41 +64,65 @@ def embed_texts(texts: list[str]) -> np.ndarray:
     ).astype(np.float32)
 
 
-def embed_hashes(conn: sqlite3.Connection, content_hashes: list[str]) -> np.ndarray:
-    """Embeddings for articles named by fingerprint, using/filling the cache.
+def cached_embed(conn: sqlite3.Connection, texts: list[str]) -> np.ndarray:
+    """Vectors for exact texts, using/filling the cache. Row order preserved.
 
-    Passage text (headline + lede) comes from the local articles table — the
-    manifest deliberately carries no text (METHODOLOGY.md D9), so embedding a
-    published manifest requires the locally collected corpus behind it.
-    Row order follows content_hashes.
+    The single entry point for every cached embedding in the pipeline —
+    articles and speeches alike — so the cache invariants live in one place.
+    The cache is derived data (rebuildable, custody-exempt): a legacy-shaped
+    table is dropped and rebuilt rather than migrated.
     """
+    legacy = conn.execute(
+        "SELECT 1 FROM pragma_table_info('embeddings') WHERE name = 'content_hash'"
+    ).fetchone()
+    if legacy:
+        conn.execute("DROP TABLE embeddings")
+        conn.commit()
     conn.executescript(CACHE_SCHEMA)
-    cached: dict[str, np.ndarray] = {}
-    for row in conn.execute(
-        "SELECT content_hash, vector FROM embeddings WHERE model = ?", (MODEL_NAME,)
-    ):
-        cached[row[0]] = np.frombuffer(row[1], dtype=np.float32)
-
-    missing = [h for h in content_hashes if h not in cached]
+    keys = [hashlib.sha256(t.encode("utf-8")).hexdigest() for t in texts]
+    found: dict[str, np.ndarray] = {}
+    unique = list(dict.fromkeys(keys))
+    for i in range(0, len(unique), _CHUNK):
+        chunk = unique[i : i + _CHUNK]
+        placeholders = ",".join("?" * len(chunk))
+        for row in conn.execute(
+            f"SELECT text_hash, vector FROM embeddings"
+            f" WHERE model = ? AND text_hash IN ({placeholders})",
+            [CACHE_MODEL_KEY, *chunk],
+        ):
+            found[row[0]] = np.frombuffer(row[1], dtype=np.float32)
+    by_key = dict(zip(keys, texts))
+    missing = [k for k in unique if k not in found]
     if missing:
-        from tiltmeter import db as tdb
-
-        found = {}
-        for chash in missing:
-            content = tdb.get_article_content(conn, chash)
-            if content is not None:
-                found[chash] = passage(content[0], content[1], content[2])
-        absent = [h for h in missing if h not in found]
-        if absent:
-            raise ValueError(
-                f"{len(absent)} manifest articles not in local corpus (first: {absent[0]})"
-            )
-        order = [h for h in missing]
-        vectors = embed_texts([found[h] for h in order])
+        vectors = embed_texts([by_key[k] for k in missing])
         conn.executemany(
-            "INSERT OR IGNORE INTO embeddings (content_hash, model, vector) VALUES (?, ?, ?)",
-            [(h, MODEL_NAME, v.tobytes()) for h, v in zip(order, vectors)],
+            "INSERT OR IGNORE INTO embeddings (text_hash, model, vector) VALUES (?, ?, ?)",
+            [(k, CACHE_MODEL_KEY, v.tobytes()) for k, v in zip(missing, vectors)],
         )
         conn.commit()
-        cached.update(dict(zip(order, vectors)))
-    return np.stack([cached[h] for h in content_hashes])
+        found.update(dict(zip(missing, vectors)))
+    return np.stack([found[k] for k in keys])
+
+
+def embed_hashes(conn: sqlite3.Connection, content_hashes: list[str]) -> np.ndarray:
+    """Embeddings for articles named by content fingerprint, in order.
+
+    Passage text is rebuilt from the fingerprinted payload in the local
+    contents table — the manifest deliberately carries no text (D9) — then
+    embedded via the shared cache.
+    """
+    from tiltmeter import db
+
+    payloads = db.get_contents(conn, list(dict.fromkeys(content_hashes)))
+    absent = [h for h in dict.fromkeys(content_hashes) if h not in payloads]
+    if absent:
+        raise ValueError(
+            f"{len(absent)} manifest articles not in local corpus (first: {absent[0]})"
+        )
+    passages = {}
+    for chash, payload in payloads.items():
+        title, text, summary = db.split_article_payload(payload)
+        passages[chash] = passage(title, text, summary)
+    vectors = cached_embed(conn, [passages[h] for h in dict.fromkeys(content_hashes)])
+    by_hash = dict(zip(dict.fromkeys(content_hashes), vectors))
+    return np.stack([by_hash[h] for h in content_hashes])

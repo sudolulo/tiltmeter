@@ -1,15 +1,38 @@
-# API serving + one-shot pipeline commands.
-#   docker compose up -d                                # serve ratings API :8477
-#   docker compose run --rm tiltmeter ingest            # poll feeds once
-#   docker compose run --rm tiltmeter snapshot --start ... --end ...
-#   docker compose run --rm tiltmeter run --manifest releases/manifest-<id>.json
+# The full deployment: read-only API plus the 6-hourly collector.
+#   docker compose up -d                                # api :8477 + collector
+#   docker compose run --rm api ingest                  # any one-shot command
+#   docker compose run --rm api validate --ratings ...  # gate day
+#
+# The collector's only shell is a sleep loop; everything with logic in it —
+# window policy, artifact naming, audit — is `tiltmeter cycle`, tested Python.
+x-common: &common
+  image: tiltmeter:latest
+  build: .
+  user: "568:568"
+  environment:
+    HOME: /tmp
+  volumes:
+    - ./data:/app/data
+    - ./releases:/app/releases
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options:
+      max-size: 10m
+      max-file: "3"
+
 services:
-  tiltmeter:
-    build: .
-    image: tiltmeter:latest
+  api:
+    <<: *common
+    command: ["serve", "--releases", "releases"]
     ports:
       - "8477:8477"
-    volumes:
-      - ./data:/app/data
-      - ./releases:/app/releases
-    restart: unless-stopped
+  collector:
+    <<: *common
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        while true; do
+          tiltmeter cycle || echo "cycle failed; retrying next interval"
+          sleep 21600
+        done

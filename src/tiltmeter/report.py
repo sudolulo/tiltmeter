@@ -11,14 +11,14 @@ from pathlib import Path
 
 import numpy as np
 
-from tiltmeter.signals.selection import _first_axis  # same axis, story side
+from tiltmeter.signals.selection import first_axis  # same axis, story side
 
 TOP_STORIES = 8
 
 
 def _story_axis_coords(matrix: np.ndarray) -> np.ndarray:
     """Story (column) positions on the same axis the outlets were scaled on."""
-    return _first_axis(matrix.T)
+    return first_axis(matrix.T)
 
 
 def render(ratings: dict, stories: list, matrix: np.ndarray, articles: list) -> dict[str, str]:
@@ -65,9 +65,11 @@ def render(ratings: dict, stories: list, matrix: np.ndarray, articles: list) -> 
             "and skipped among them is what placed it where it is.",
             "",
         ]
+        # disjoint by construction: never let one story argue for both poles
+        k = min(TOP_STORIES, len(ranked_stories) // 2)
         for label, indices in (
-            ("Left-pole stories", ranked_stories[:TOP_STORIES]),
-            ("Right-pole stories", ranked_stories[::-1][:TOP_STORIES]),
+            ("Left-pole stories", ranked_stories[:k]),
+            ("Right-pole stories", ranked_stories[::-1][:k]),
         ):
             lines.append(f"## {label}")
             lines.append("")
@@ -101,5 +103,5 @@ def write(pages: dict[str, str], ratings: dict, out_dir: str | Path) -> Path:
     directory = Path(out_dir) / f"report-{ratings['snapshot_id']}"
     directory.mkdir(parents=True, exist_ok=True)
     for filename, content in pages.items():
-        (directory / filename).write_text(content)
+        (directory / filename).write_text(content, encoding="utf-8")
     return directory

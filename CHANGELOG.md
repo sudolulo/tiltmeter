@@ -8,6 +8,62 @@ requires a version bump and, if it changes methodology, a decision record in
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-07-10
+
+Full-codebase audit (8 finder angles, 42 candidates, 19 verified findings)
+and the refactor to zero. The fingerprinted store is untouched; the
+embeddings cache (derived data) rebuilds itself once.
+
+### Fixed
+
+- Custody integrity: collected rows and their chain entry now commit in ONE
+  transaction per outlet/day batch — no crash or malformed feed entry can
+  leave content outside the chain; malformed entries are skipped, batches
+  roll back whole. `audit` gained the reverse check (content outside the
+  chain fails) and now opens the store strictly read-only, refusing missing
+  paths instead of creating an empty store and passing.
+- Gate math: Spearman now uses tie-averaged ranks (was order-dependent on
+  tied data — could flip the 0.7 gate by alphabetization; verified
+  numerically). Gate requires BOTH raters present and passing; peeking with
+  --allow-unverified is recorded in the artifact, written to an unservable
+  validation-peek-* file, and can never pass.
+- Manifest integrity: corpus_hash now covers every field of every article
+  record (outlet attribution, URLs, byline, timestamps), not just content
+  fingerprints — metadata edits in published manifests are detected
+  (manifest_version 2; v1 manifests refused).
+- Embedding cache is self-invalidating: keyed by hash of the exact embedded
+  text plus model@revision, so pin or recipe changes can never serve stale
+  vectors; one shared implementation for articles and speeches; lookups are
+  chunked (no more whole-table scans that grow with the corpus).
+- /health survives bad timestamps (marks the outlet stale instead of dying);
+  serve gained --config so health scoping and /outlets work from any cwd.
+- Evidence pages: pole story lists are disjoint by construction.
+- Deleted src/tiltmeter/congress.py — an abandoned pre-reference.py draft
+  (swept in by git add -A at v0.2.0) that bypassed the content store and
+  custody chain with unverifiable fingerprints. Never imported; now gone.
+
+### Added
+
+- `tiltmeter cycle`: the deployment unit — ingest, reference top-up, rolling
+  14-day snapshot + run, audit — so window policy and orchestration live in
+  tested Python; compose now ships the collector service with only a sleep
+  loop in shell.
+- artifacts.py: one deterministic writer (UTF-8, sorted keys, no ASCII
+  escaping) and one naming table for every release artifact; the API's
+  routes are generated from it. All writers/readers migrated (three had
+  drifted; several were locale-dependent).
+- stats.py: the tie-averaged Spearman, tiny and textbook-checkable.
+- tests/test_hardening.py: one regression test per audit finding family,
+  plus Dockerfile↔code model-pin consistency and byte-determinism checks.
+
+### Changed
+
+- Dockerfile bakes the model before copying source (code changes no longer
+  re-download it); pins declared as ARGs, drift-gated by test.
+- score.compute returns the full pipeline result; ratings, stories artifact,
+  and evidence pages are one computation by identity, and the sweep shares
+  the same orientation-proxy helper.
+
 ## [0.7.0] - 2026-07-10
 
 Early-development reset (ADR-0005): with a one-day corpus, compatibility debt
@@ -217,3 +273,14 @@ human attention and produce trustworthy corpus + fresh dry-run ratings.
   WSJ politics feed → WSJ world news feed (politics feed dead; Opinion feed
   deliberately not used — news and opinion are rated separately by every
   incumbent rater).
+
+[Unreleased]: https://github.com/sudolulo/tiltmeter/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/sudolulo/tiltmeter/compare/v0.7.0...v0.8.0
+[0.7.0]: https://github.com/sudolulo/tiltmeter/compare/v0.6.0...v0.7.0
+[0.6.0]: https://github.com/sudolulo/tiltmeter/compare/v0.5.0...v0.6.0
+[0.5.0]: https://github.com/sudolulo/tiltmeter/compare/v0.4.1...v0.5.0
+[0.4.1]: https://github.com/sudolulo/tiltmeter/compare/v0.4.0...v0.4.1
+[0.4.0]: https://github.com/sudolulo/tiltmeter/compare/v0.3.0...v0.4.0
+[0.3.0]: https://github.com/sudolulo/tiltmeter/compare/v0.2.0...v0.3.0
+[0.2.0]: https://github.com/sudolulo/tiltmeter/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/sudolulo/tiltmeter/releases/tag/v0.1.0

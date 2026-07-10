@@ -1,13 +1,15 @@
 """Which exact articles is a rating computed from?
 
-A snapshot freezes a time window of the corpus into a pinned, verifiable set:
-every article in the window, identified by its content fingerprint, listed in
-a manifest anyone can publish, re-fetch, and check. Ratings are computed from
-snapshots — never from the live, shifting corpus — so a rating and its
-evidence can be re-derived long after the news cycle moved on.
+A snapshot freezes a time window of the corpus into a pinned, verifiable set,
+listed in a manifest anyone can publish, re-fetch, and check. Ratings are
+computed from snapshots — never from the live, shifting corpus — so a rating
+and its evidence can be re-derived long after the news cycle moved on.
 
-The manifest deliberately contains no article text (see METHODOLOGY.md D9):
-URL, outlet, headline, timestamps, and fingerprint only.
+The manifest deliberately contains no article text (METHODOLOGY.md D9), and
+its corpus_hash covers **every field of every article record** — outlet
+attribution, URLs, byline, timestamps, and the content fingerprint — not just
+the fingerprints. Editing any metadata in a published manifest breaks the
+hash: attribution is evidence too.
 """
 
 import hashlib
@@ -15,34 +17,50 @@ import json
 import sqlite3
 from pathlib import Path
 
-MANIFEST_VERSION = 1
+from tiltmeter.artifacts import read_json, write_json
+
+MANIFEST_VERSION = 2  # v2: corpus_hash covers full article records
 
 
 def _rows_in_window(conn: sqlite3.Connection, start: str, end: str) -> list[dict]:
     """All articles observed in their feeds within [start, end), ordered
     deterministically. Keyed on observed_at so archive-backfilled items land
     in the window where they appeared, not the day we retrieved them."""
+    import zlib
+
     from tiltmeter import db
 
     cur = conn.execute(
         "SELECT o.name AS outlet, a.url, a.byline, a.published, a.observed_at,"
-        " a.fetched_at, a.source, a.content_hash"
+        " a.fetched_at, a.source, a.content_hash, c.text_z"
         " FROM articles a JOIN outlets o ON o.id = a.outlet_id"
+        " JOIN contents c ON c.content_hash = a.content_hash"
         " WHERE a.observed_at >= ? AND a.observed_at < ?"
         " ORDER BY a.content_hash, a.url",
         (start, end),
     )
-    cols = [c[0] for c in cur.description]
-    rows = [dict(zip(cols, row)) for row in cur.fetchall()]
-    for row in rows:
-        content = db.get_article_content(conn, row["content_hash"])
-        row["title"] = content[0] if content else ""
+    rows = []
+    titles: dict[str, str] = {}  # decompress each distinct payload once
+    for outlet, url, byline, published, observed, fetched, source, chash, blob in cur:
+        if chash not in titles:
+            payload = zlib.decompress(blob).decode("utf-8")
+            titles[chash] = db.split_article_payload(payload)[0]
+        rows.append({
+            "outlet": outlet, "url": url, "byline": byline, "published": published,
+            "observed_at": observed, "fetched_at": fetched, "source": source,
+            "content_hash": chash, "title": titles[chash],
+        })
     return rows
 
 
-def corpus_hash(article_hashes: list[str]) -> str:
-    """One fingerprint for the whole snapshot: hash of the sorted article hashes."""
-    return hashlib.sha256("\n".join(sorted(article_hashes)).encode()).hexdigest()
+def corpus_hash(articles: list[dict]) -> str:
+    """One fingerprint for the whole snapshot, covering every field of every
+    record: canonical (sorted-key, UTF-8) serialization of each article,
+    hashed in sorted order."""
+    lines = sorted(
+        json.dumps(a, sort_keys=True, ensure_ascii=False) for a in articles
+    )
+    return hashlib.sha256("\n".join(lines).encode("utf-8")).hexdigest()
 
 
 def create(conn: sqlite3.Connection, start: str, end: str, pipeline_version: str) -> dict:
@@ -58,23 +76,22 @@ def create(conn: sqlite3.Connection, start: str, end: str, pipeline_version: str
         "pipeline_version": pipeline_version,
         "n_articles": len(articles),
         "outlets": sorted({a["outlet"] for a in articles}),
-        "corpus_hash": corpus_hash([a["content_hash"] for a in articles]),
+        "corpus_hash": corpus_hash(articles),
         "articles": articles,
     }
 
 
 def write(manifest: dict, releases_dir: str | Path) -> Path:
-    """Write a manifest to releases/, stable formatting for byte-identical re-runs."""
-    path = Path(releases_dir) / f"manifest-{manifest['snapshot_id']}.json"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(manifest, indent=1, sort_keys=True, ensure_ascii=False) + "\n")
-    return path
+    return write_json(
+        Path(releases_dir) / f"manifest-{manifest['snapshot_id']}.json", manifest
+    )
 
 
 def load(path: str | Path) -> dict:
     """Read a manifest back; verify its corpus hash before trusting it."""
-    manifest = json.loads(Path(path).read_text())
-    expected = corpus_hash([a["content_hash"] for a in manifest["articles"]])
-    if manifest["corpus_hash"] != expected:
+    manifest = read_json(path)
+    if manifest.get("manifest_version") != MANIFEST_VERSION:
+        raise ValueError(f"manifest version {manifest.get('manifest_version')} unsupported")
+    if manifest["corpus_hash"] != corpus_hash(manifest["articles"]):
         raise ValueError(f"corpus_hash mismatch in {path}: manifest is corrupt or edited")
     return manifest

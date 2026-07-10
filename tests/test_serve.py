@@ -88,6 +88,15 @@ def test_health_reports_stale_outlets(tmp_path):
     assert health["stale_outlets"] == ["dead-feed"]
     assert health["hours_since_last_article"]["fresh-news"] < 3
 
+    # retired outlets must not alarm forever; configured-but-never-collected
+    # outlets are the bootstrap dead-feed case and must alarm immediately
+    scoped = serve.collection_health(
+        tmp_path / "corpus.db", configured=["fresh-news", "brand-new"]
+    )
+    assert scoped["stale_outlets"] == ["brand-new"]
+    assert "dead-feed" not in scoped["hours_since_last_article"]
+    assert scoped["hours_since_last_article"]["brand-new"] is None
+
     server = ThreadingHTTPServer(
         ("127.0.0.1", 0),
         serve.make_handler(tmp_path, None, tmp_path / "corpus.db"),

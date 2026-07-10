@@ -8,6 +8,15 @@ requires a version bump and, if it changes methodology, a decision record in
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-07-10
+
+### Fixed
+
+- `/health` staleness is now computed against the *configured* outlet list:
+  outlets retired from config no longer alarm forever, and configured
+  outlets with no articles at all (the bootstrap dead-feed case) are
+  reported stale with null hours instead of being invisible.
+
 ## [0.4.0] - 2026-07-10
 
 Unattended-operation hardening: the deployment must run two weeks with no

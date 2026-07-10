@@ -35,11 +35,14 @@ DEFAULT_PORT = 8477
 STALE_AFTER_HOURS = 36.0  # two missed 6h collection cycles plus slack
 
 
-def collection_health(db_path: Path) -> dict | None:
+def collection_health(db_path: Path, configured: list[str] | None = None) -> dict | None:
     """Hours since each outlet last yielded an article — the monitoring hook.
 
     A silently dead feed is the main way two unattended weeks go wrong; this
-    makes it one HTTP request to notice. Returns None when no corpus exists.
+    makes it one HTTP request to notice. Only *configured* outlets count:
+    outlets retired from config must not alarm forever, and configured
+    outlets with no articles at all are exactly the dead-feed case (reported
+    as null hours and stale). Returns None when no corpus exists.
     """
     if not db_path.is_file():
         return None
@@ -53,14 +56,18 @@ def collection_health(db_path: Path) -> dict | None:
     finally:
         conn.close()
     now = datetime.now(timezone.utc)
-    hours = {
+    hours: dict[str, float | None] = {
         outlet: round((now - datetime.fromisoformat(ts)).total_seconds() / 3600, 1)
         for outlet, ts in rows
         if ts
     }
+    if configured is not None:
+        hours = {o: hours.get(o) for o in configured}
     return {
         "hours_since_last_article": dict(sorted(hours.items())),
-        "stale_outlets": sorted(o for o, h in hours.items() if h > STALE_AFTER_HOURS),
+        "stale_outlets": sorted(
+            o for o, h in hours.items() if h is None or h > STALE_AFTER_HOURS
+        ),
     }
 
 
@@ -72,10 +79,12 @@ def _ratings_ids(releases: Path) -> list[str]:
 
 def make_handler(releases: Path, outlets_config: Path | None = None, db_path: Path | None = None):
     outlets_payload = None
+    configured_names: list[str] | None = None
     if outlets_config and outlets_config.is_file():
         import yaml
 
         outlets_payload = {"outlets": yaml.safe_load(outlets_config.read_text())["outlets"]}
+        configured_names = [o["name"] for o in outlets_payload["outlets"]]
 
     class Handler(BaseHTTPRequestHandler):
         server_version = "tiltmeter"
@@ -107,7 +116,7 @@ def make_handler(releases: Path, outlets_config: Path | None = None, db_path: Pa
                 case ["health"]:
                     payload = {"status": "ok", "ratings": ids}
                     if db_path is not None:
-                        payload["collection"] = collection_health(db_path)
+                        payload["collection"] = collection_health(db_path, configured_names)
                         if payload["collection"] and payload["collection"]["stale_outlets"]:
                             payload["status"] = "degraded"
                     self._json(200, payload)

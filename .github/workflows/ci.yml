@@ -1,0 +1,40 @@
+name: ci
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --dev
+      - run: uv run ruff check .
+      - name: tests (includes docs gates - readability, glossary, decision-block lint)
+        run: uv run pytest -q
+
+  docs-sync:
+    # Code and config may not change without a docs change in the same range.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: determine range and check
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          SHA: ${{ github.sha }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          if [[ "$EVENT" == "pull_request" ]]; then
+            range="origin/${BASE_REF}...HEAD"
+          elif [[ "$BEFORE" =~ ^0+$ ]]; then
+            echo "new branch push; skipping docs-sync"; exit 0
+          else
+            range="${BEFORE}..${SHA}"
+          fi
+          bash scripts/check_docs_sync.sh "$range"

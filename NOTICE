@@ -1,0 +1,10 @@
+tiltmeter — development disclosure
+
+This project is developed with substantial AI assistance (Anthropic Claude),
+under human direction and review. Methodology decisions are recorded in
+docs/decisions/ with their rationale and sources regardless of who or what
+drafted them; the auditability guarantees in METHODOLOGY.md are enforced by
+CI, not by trust in any author, human or otherwise.
+
+Consistent with the project's disclosure policy, AI use is declared here in
+the repository rather than in individual commit messages.

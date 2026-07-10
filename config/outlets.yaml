@@ -1,0 +1,76 @@
+# Outlets tiltmeter collects from.
+#
+# Selection criteria (see METHODOLOGY.md, decision D4):
+# - ~20 US outlets deliberately spread across the spectrum as rated by the
+#   incumbent raters (used for SELECTION only, never as pipeline input)
+# - politics-section feed preferred where one exists, to reduce the
+#   topic-mix confound (sports/lifestyle coverage polluting the signal)
+# - feed must actually work; broken outlets get swapped for a
+#   same-region-of-spectrum alternative, recorded in CHANGELOG.md
+#
+# Fields: name (canonical id), feed (RSS/Atom URL), homepage.
+
+outlets:
+  - name: cs-monitor
+    homepage: https://www.csmonitor.com
+    feed: https://rss.csmonitor.com/feeds/politics
+  - name: pbs-newshour
+    homepage: https://www.pbs.org/newshour
+    feed: https://www.pbs.org/newshour/feeds/rss/politics
+  - name: npr
+    homepage: https://www.npr.org
+    feed: https://feeds.npr.org/1014/rss.xml
+  - name: axios
+    homepage: https://www.axios.com
+    feed: https://api.axios.com/feed/
+  - name: the-hill
+    homepage: https://thehill.com
+    feed: https://thehill.com/homenews/feed/
+  - name: nytimes
+    homepage: https://www.nytimes.com
+    feed: https://rss.nytimes.com/services/xml/rss/nyt/Politics.xml
+  - name: washington-post
+    homepage: https://www.washingtonpost.com
+    feed: https://feeds.washingtonpost.com/rss/politics
+  - name: cnn
+    homepage: https://www.cnn.com
+    feed: http://rss.cnn.com/rss/cnn_allpolitics.rss
+  - name: nbc-news
+    homepage: https://www.nbcnews.com
+    feed: https://feeds.nbcnews.com/nbcnews/public/politics
+  - name: huffpost
+    homepage: https://www.huffpost.com
+    feed: https://www.huffpost.com/section/politics/feed
+  - name: mother-jones
+    homepage: https://www.motherjones.com
+    feed: https://www.motherjones.com/politics/feed/
+  - name: the-nation
+    homepage: https://www.thenation.com
+    feed: https://www.thenation.com/feed/?post_type=article
+  # WSJ's politics feed is dead; the working feed is general news (not the
+  # Opinion feed — news and opinion are rated separately by every incumbent
+  # rater, and we collect news). Topic-mix tradeoff noted in METHODOLOGY D9.
+  - name: wsj
+    homepage: https://www.wsj.com
+    feed: https://feeds.a.dj.com/rss/RSSWorldNews.xml
+  - name: national-review
+    homepage: https://www.nationalreview.com
+    feed: https://www.nationalreview.com/feed/
+  - name: washington-examiner
+    homepage: https://www.washingtonexaminer.com
+    feed: https://www.washingtonexaminer.com/feed
+  - name: ny-post
+    homepage: https://nypost.com
+    feed: https://nypost.com/politics/feed/
+  - name: fox-news
+    homepage: https://www.foxnews.com
+    feed: https://moxie.foxnews.com/google-publisher/politics.xml
+  - name: daily-wire
+    homepage: https://www.dailywire.com
+    feed: https://www.dailywire.com/feeds/rss.xml
+  - name: breitbart
+    homepage: https://www.breitbart.com
+    feed: https://feeds.feedburner.com/breitbart
+  - name: newsmax
+    homepage: https://www.newsmax.com
+    feed: https://www.newsmax.com/rss/Politics/1/

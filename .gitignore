@@ -1,0 +1,10 @@
+# collected corpus stays local (copyright: we publish manifests, not text)
+data/
+
+# python
+__pycache__/
+*.pyc
+.venv/
+dist/
+.pytest_cache/
+.ruff_cache/

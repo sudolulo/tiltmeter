@@ -1,7 +1,7 @@
 # Evidence: newsmax
 
 - **Score**: -0.052 (95% CI -0.532 … +0.370); negative = left, positive = right
-- **Snapshot**: 2026-07-10_2026-07-11 (corpus 626c32fd3570…), pipeline v0.3.0
+- **Snapshot**: 2026-07-10_2026-07-11 (corpus 626c32fd3570…), pipeline v0.5.0
 - **Coverage**: 12 of 63 cross-outlet stories
 - **Nearest neighbors**: ny-post (-0.051), npr (-0.049), national-review (-0.057)
 

@@ -1,7 +1,7 @@
 # Evidence: daily-wire
 
 - **Score**: -0.044 (95% CI -0.241 … +0.142); negative = left, positive = right
-- **Snapshot**: 2026-07-10_2026-07-11 (corpus 626c32fd3570…), pipeline v0.3.0
+- **Snapshot**: 2026-07-10_2026-07-11 (corpus 626c32fd3570…), pipeline v0.5.0
 - **Coverage**: 14 of 63 cross-outlet stories
 - **Nearest neighbors**: the-nation (-0.044), breitbart (-0.045), the-hill (-0.047)
 

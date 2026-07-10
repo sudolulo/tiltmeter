@@ -111,3 +111,41 @@ are the votes.
 ### Lede
 The opening sentences of a news article, summarizing the story. tiltmeter
 embeds headline + lede to group articles into story clusters.
+
+### Content-addressed storage
+Storing each piece of text under its own fingerprint. The fingerprint is both
+the address and the integrity check: if the text changes, it no longer
+matches its address. Identical texts are stored exactly once.
+
+### Custody chain
+The dataset's tamper-evident logbook. Every batch of newly collected items
+adds a line, and each line is locked to the line before it by a fingerprint.
+Changing or removing any old line breaks every line after it — so the
+collection's history cannot be rewritten quietly. `tiltmeter audit` checks
+the whole chain.
+
+### Append-only
+Data is added, never edited or deleted. Collected articles and speeches are
+append-only in tiltmeter; only derived caches (like embeddings) may be
+rebuilt.
+
+### Byline
+The author credit on an article, stored exactly as the outlet published it.
+Collected because it cannot be backfilled later; not yet used by any signal.
+
+### Content-addressed storage
+Storing each piece of text under its own fingerprint. The fingerprint is both
+the address and the integrity check: if the text changes, it no longer
+matches its address. Identical texts are stored exactly once.
+
+### Custody chain
+The dataset's tamper-evident logbook. Every batch of newly collected items
+adds a line, and each line is locked to the line before it by a fingerprint.
+Changing or removing any old line breaks every line after it — so the
+collection's history cannot be rewritten quietly. `tiltmeter audit` checks
+the whole chain.
+
+### Append-only
+Data is added, never edited or deleted. Collected articles and speeches are
+append-only in tiltmeter; only derived caches (like embeddings) may be
+rebuilt.

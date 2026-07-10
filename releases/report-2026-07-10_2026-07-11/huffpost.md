@@ -1,7 +1,7 @@
 # Evidence: huffpost
 
 - **Score**: -0.008 (95% CI -0.239 … +0.321); negative = left, positive = right
-- **Snapshot**: 2026-07-10_2026-07-11 (corpus 626c32fd3570…), pipeline v0.3.0
+- **Snapshot**: 2026-07-10_2026-07-11 (corpus 626c32fd3570…), pipeline v0.5.0
 - **Coverage**: 25 of 63 cross-outlet stories
 - **Nearest neighbors**: cnn (-0.000), wsj (-0.000), washington-examiner (-0.030)
 

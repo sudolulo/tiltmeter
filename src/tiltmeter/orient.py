@@ -68,7 +68,15 @@ def _cached_embed_texts(conn: sqlite3.Connection, texts: list[str]) -> np.ndarra
 
 def party_means(conn: sqlite3.Connection) -> dict[str, np.ndarray]:
     """Average embedding of each party's floor speeches (unit-normalized)."""
-    rows = conn.execute("SELECT party, text FROM reference_speeches").fetchall()
+    from tiltmeter import db as tdb
+
+    rows = [
+        (party, tdb.get_content(conn, chash))
+        for party, chash in conn.execute(
+            "SELECT party, content_hash FROM reference_speeches"
+        ).fetchall()
+    ]
+    rows = [(p, t) for p, t in rows if t]
     if not rows:
         raise ValueError("no reference speeches; run: tiltmeter reference")
     means = {}

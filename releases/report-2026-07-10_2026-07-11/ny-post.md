@@ -1,7 +1,7 @@
 # Evidence: ny-post
 
 - **Score**: -0.051 (95% CI -0.437 … +0.228); negative = left, positive = right
-- **Snapshot**: 2026-07-10_2026-07-11 (corpus 626c32fd3570…), pipeline v0.3.0
+- **Snapshot**: 2026-07-10_2026-07-11 (corpus 626c32fd3570…), pipeline v0.5.0
 - **Coverage**: 6 of 63 cross-outlet stories
 - **Nearest neighbors**: npr (-0.049), newsmax (-0.052), the-hill (-0.047)
 

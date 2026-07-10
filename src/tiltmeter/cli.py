@@ -128,6 +128,29 @@ def cmd_sweep(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_audit(args: argparse.Namespace) -> int:
+    """Full dataset integrity check: content hashes + custody chain."""
+    import json
+    from pathlib import Path
+
+    conn = db.connect(args.db)
+    problems = db.custody_verify(conn) + db.verify_contents(conn)
+    head = db.custody_head(conn)
+    n_contents = conn.execute("SELECT COUNT(*) FROM contents").fetchone()[0]
+    if args.emit:
+        Path(args.emit).write_text(json.dumps(
+            {"custody_head": head, "n_contents": n_contents,
+             "intact": not problems, "problems": problems}, indent=1) + "\n")
+    print(f"  contents: {n_contents} items, chain head seq {head['seq']}")
+    if problems:
+        for p in problems[:20]:
+            print(f"  PROBLEM: {p}")
+        print(f"  AUDIT FAILED ({len(problems)} problems)")
+        return 1
+    print("  AUDIT PASSED — every fingerprint verifies, chain intact")
+    return 0
+
+
 def cmd_serve(args: argparse.Namespace) -> int:
     from tiltmeter import serve
 
@@ -195,6 +218,10 @@ def main(argv: list[str] | None = None) -> int:
     p_sweep.add_argument("--manifest", required=True)
     p_sweep.add_argument("--out", default="releases")
     p_sweep.set_defaults(func=cmd_sweep)
+
+    p_audit = sub.add_parser("audit", help="verify every content fingerprint + custody chain")
+    p_audit.add_argument("--emit", help="also write an audit summary JSON to this path")
+    p_audit.set_defaults(func=cmd_audit)
 
     p_serve = sub.add_parser("serve", help="read-only HTTP API over computed releases")
     p_serve.add_argument("--releases", default="releases")

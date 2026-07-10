@@ -1,7 +1,7 @@
 # Evidence: breitbart
 
 - **Score**: -0.045 (95% CI -0.516 … +0.219); negative = left, positive = right
-- **Snapshot**: 2026-07-10_2026-07-11 (corpus 626c32fd3570…), pipeline v0.3.0
+- **Snapshot**: 2026-07-10_2026-07-11 (corpus 626c32fd3570…), pipeline v0.5.0
 - **Coverage**: 9 of 63 cross-outlet stories
 - **Nearest neighbors**: the-nation (-0.044), daily-wire (-0.044), the-hill (-0.047)
 

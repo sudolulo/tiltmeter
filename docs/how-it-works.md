@@ -69,6 +69,15 @@ scores a lot, you deserve to know. ([D7](../METHODOLOGY.md#d7-validation-against
 - It does not let anyone — including us — nudge a rating by hand. There is no
   hand. ([D1](../METHODOLOGY.md#d1-ratings-come-from-a-reproducible-pipeline-not-editorial-judgment))
 
+## How we guard the data
+
+Every article we save gets a *fingerprint* from its exact text. Each batch of
+new articles also gets a line in a logbook. Each line is locked to the line
+before it. If anyone changes or removes an old article — even us — the
+fingerprints stop matching and the logbook breaks at that spot. One command,
+`tiltmeter audit`, checks every fingerprint and every line. So the data set
+does not ask for trust. It carries its own proof.
+
 ## Check our work
 
 Every published score links to an evidence page: the real headlines that drove

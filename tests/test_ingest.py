@@ -35,6 +35,27 @@ def test_content_hash_is_stable_and_content_sensitive():
     assert db.content_hash("A B", "C") != db.content_hash("A", "B C")
 
 
+def test_outlet_dimension_and_byline():
+    from tiltmeter.ingest import strip_html
+
+    conn = db.connect(":memory:")
+    for i in range(3):
+        db.insert_article(
+            conn, outlet="nytimes", url=f"https://nytimes.com/{i}", title=f"T{i}",
+            published=None, fetched_at="2026-07-10T00:00:00+00:00",
+            summary=None, text="x", byline="By Jane Doe" if i == 0 else None,
+        )
+    # outlet name stored once, referenced thrice
+    assert conn.execute("SELECT COUNT(*) FROM outlets").fetchone()[0] == 1
+    assert conn.execute("SELECT COUNT(*) FROM articles").fetchone()[0] == 3
+    assert conn.execute(
+        "SELECT byline FROM articles WHERE url LIKE '%/0'"
+    ).fetchone()[0] == "By Jane Doe"
+    # summaries are stored as prose, not markup
+    assert strip_html('<p>Real <b>text</b></p><img src="pixel.gif"/>') == "Real text"
+    assert strip_html("") is None
+
+
 def test_counts_group_by_outlet():
     conn = db.connect(":memory:")
     for i, outlet in enumerate(["left-times", "right-post", "left-times"]):

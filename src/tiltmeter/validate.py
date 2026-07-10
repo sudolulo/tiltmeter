@@ -112,6 +112,7 @@ def report(ratings: dict, reference: Reference) -> dict:
     """
     results: dict[str, RaterResult] = {}
     missing: list[str] = []
+    thin: dict[str, str] = {}
     for rater in REQUIRED_RATERS:
         values = reference.by_rater.get(rater) or {}
         if not values:
@@ -119,13 +120,15 @@ def report(ratings: dict, reference: Reference) -> dict:
             continue
         try:
             results[rater] = against_rater(ratings, values, rater)
-        except ValueError:
-            # 1-4 shared outlets: too thin to correlate — a failed rater is a
-            # recorded gate failure, never a crash with no artifact
-            missing.append(rater)
+        except ValueError as exc:
+            # 1-4 shared outlets: too thin to correlate — recorded distinctly
+            # from "no verified values", because the operator's fix differs
+            # (expand outlet overlap vs. verify values at source)
+            thin[rater] = str(exc)
     peeking = bool(reference.unverified_used)
     gate_passed = (
         not missing
+        and not thin
         and not peeking
         and all(r.passes_gate for r in results.values())
         and ratings["orientation"]["reliable"]
@@ -140,6 +143,7 @@ def report(ratings: dict, reference: Reference) -> dict:
         "unverified_used": reference.unverified_used,
         "skipped_unverified": reference.unverified_skipped,
         "raters_missing": missing,
+        "raters_thin": thin,
         "raters": {
             name: {
                 "n": r.n,

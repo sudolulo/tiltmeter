@@ -237,6 +237,12 @@ def insert_article(
     fetched_at = utc_timestamp(fetched_at, "fetched_at")
     observed_at = utc_timestamp(observed_at, "observed_at") if observed_at else fetched_at
     chash = content_hash(title, text or "", summary or "")
+    # python-sqlite3 (legacy autocommit) does NOT open a transaction for
+    # SAVEPOINT; without an explicit BEGIN the savepoint would be outermost
+    # and RELEASE would commit this single item, destroying batch atomicity.
+    # The caller still owns the commit, exactly as custody_append documents.
+    if not conn.in_transaction:
+        conn.execute("BEGIN")
     # savepoint: content row and metadata row land together or not at all — a
     # failure between them must never strand unchained content in the batch
     conn.execute("SAVEPOINT insert_item")
@@ -277,6 +283,8 @@ def insert_speech(
     ).fetchone()
     if existing:
         return None
+    if not conn.in_transaction:
+        conn.execute("BEGIN")  # see insert_article: savepoints must nest
     conn.execute("SAVEPOINT insert_item")
     try:
         _store_content(conn, chash, text)

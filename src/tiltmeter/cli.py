@@ -172,6 +172,8 @@ def cmd_validate(args: argparse.Namespace) -> int:
               " (verify at source to include them)")
     for rater in result["raters_missing"]:
         print(f"  {rater:10} MISSING — no verified values; gate cannot pass")
+    for rater, reason in result["raters_thin"].items():
+        print(f"  {rater:10} THIN — {reason}; gate cannot pass")
     for rater, r in result["raters"].items():
         mark = "PASS" if r["passes_gate"] else "fail"
         print(f"  {rater:10} rho={r['rho']:+.3f}  n={r['n']}  p={r['permutation_p']}  [{mark}]")

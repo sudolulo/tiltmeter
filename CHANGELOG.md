@@ -8,6 +8,25 @@ requires a version bump and, if it changes methodology, a decision record in
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-07-10
+
+Audit pass 3 (zero-confirmation over the pass-2 diff): 2 findings — one a
+regression introduced by pass 2 itself, which is exactly why the loop runs
+until zero.
+
+### Fixed
+
+- Batch atomicity restored: Python's sqlite3 opens no transaction for
+  SAVEPOINT, so the pass-2 per-entry savepoints silently became outermost
+  transactions on the autocommit ingest path and RELEASE committed every
+  item individually — recreating the crash window pass 1 closed. Inserts now
+  guard with an explicit BEGIN; a rollback before custody_append leaves
+  nothing durable (pinned by an empirical test on the real path).
+- validate distinguishes thin-sample raters (verified values but <5 shared
+  outlets → expand overlap) from missing raters (no verified values → verify
+  at source) in both the artifact (raters_thin with reason) and the CLI
+  output; the gate fails on either, now for stated reasons.
+
 ## [0.8.1] - 2026-07-10
 
 Audit pass 2 (three angles over the pass-1 remediation): 23 findings, all
@@ -311,7 +330,8 @@ human attention and produce trustworthy corpus + fresh dry-run ratings.
   deliberately not used — news and opinion are rated separately by every
   incumbent rater).
 
-[Unreleased]: https://github.com/sudolulo/tiltmeter/compare/v0.8.1...HEAD
+[Unreleased]: https://github.com/sudolulo/tiltmeter/compare/v0.8.2...HEAD
+[0.8.2]: https://github.com/sudolulo/tiltmeter/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/sudolulo/tiltmeter/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/sudolulo/tiltmeter/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/sudolulo/tiltmeter/compare/v0.6.0...v0.7.0

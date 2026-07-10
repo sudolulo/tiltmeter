@@ -133,6 +133,50 @@ def test_failed_insert_cannot_strand_unchained_content(monkeypatch):
     assert conn.execute("SELECT COUNT(*) FROM contents").fetchone()[0] == 0
 
 
+def test_batch_atomicity_on_autocommit_connection():
+    """The pass-3 regression, pinned: on a fresh (autocommit) connection —
+    the real ingest path — inserts must ride ONE batch transaction, so a
+    rollback before custody_append leaves nothing durable. Python sqlite3
+    opens no transaction for SAVEPOINT; without the explicit BEGIN guard,
+    RELEASE was committing every item individually."""
+    conn = db.connect(":memory:")
+    for i in range(2):
+        db.insert_article(
+            conn, outlet="x", url=f"https://x.com/{i}", title=f"T{i}", published=None,
+            fetched_at="2026-07-10T00:00:00+00:00", summary=None, text=f"b{i}",
+        )
+    assert conn.in_transaction, "inserts must remain uncommitted until the caller commits"
+    conn.rollback()  # ingest_all's bad-feed path / crash before custody_append
+    assert conn.execute("SELECT COUNT(*) FROM contents").fetchone()[0] == 0
+    assert conn.execute("SELECT COUNT(*) FROM articles").fetchone()[0] == 0
+
+
+def test_thin_rater_recorded_distinctly_from_missing():
+    """Too-few-shared-outlets and no-verified-values demand different fixes;
+    the artifact must say which one happened."""
+    from tiltmeter import validate
+
+    thin_ref = validate.Reference(
+        by_rater={"allsides": {o: round(s * 2) for o, s in
+                               [("left-a", -0.9), ("left-b", -0.5), ("mid-c", -0.1),
+                                ("mid-d", 0.1), ("right-e", 0.5), ("right-f", 0.9)]},
+                  "ad_fontes": {"left-a": -15.0, "mid-c": 0.0, "right-e": 12.0}},
+        unverified_used=[], unverified_skipped=[],
+    )
+    scores = dict([("left-a", -0.9), ("left-b", -0.5), ("mid-c", -0.1),
+                   ("mid-d", 0.1), ("right-e", 0.5), ("right-f", 0.9)])
+    ratings_doc = {
+        "snapshot_id": "s", "corpus_hash": "x" * 64, "pipeline_version": "t",
+        "orientation": {"reliable": True},
+        "outlets": [{"outlet": o, "score": v} for o, v in scores.items()],
+    }
+    result = validate.report(ratings_doc, thin_ref)
+    assert result["raters_missing"] == []
+    assert "ad_fontes" in result["raters_thin"]
+    assert "3 outlets shared" in result["raters_thin"]["ad_fontes"]
+    assert not result["gate_passed"]
+
+
 def test_repair_adopts_orphans_visibly():
     conn = db.connect(":memory:")
     db.insert_article(

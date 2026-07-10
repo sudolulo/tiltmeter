@@ -26,12 +26,15 @@ def api(tmp_path):
     (report / "index.md").write_text("# Evidence index")
     (report / "fox-news.md").write_text("# Evidence: fox-news")
     outlets = tmp_path / "outlets.yaml"
+    # retrieved is deliberately an unquoted YAML date: it loads as a Python
+    # date object, and serialization must survive that (it once didn't)
     outlets.write_text(
         "outlets:\n"
         "  - name: fox-news\n"
         "    homepage: https://www.foxnews.com\n"
         "    feed: https://example.com/feed\n"
-        "    ownership: {owner: Fox Corporation, type: public-company}\n"
+        "    ownership: {owner: Fox Corporation, type: public-company,\n"
+        "                retrieved: 2026-07-10, verified: true}\n"
     )
 
     server = ThreadingHTTPServer(

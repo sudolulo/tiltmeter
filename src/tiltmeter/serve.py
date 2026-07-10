@@ -58,7 +58,9 @@ def make_handler(releases: Path, outlets_config: Path | None = None):
             self.wfile.write(body)
 
         def _json(self, code: int, payload) -> None:
-            self._send(code, json.dumps(payload).encode(), "application/json")
+            # default=str: YAML loads unquoted dates as date objects; a payload
+            # must never be able to crash the response mid-flight
+            self._send(code, json.dumps(payload, default=str).encode(), "application/json")
 
         def _file(self, path: Path, content_type: str) -> None:
             if path.is_file():

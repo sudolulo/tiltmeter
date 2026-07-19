@@ -9,15 +9,17 @@ Politeness rules: we identify ourselves with an honest User-Agent, fetch each
 article at most once ever (URLs are deduplicated), and pause between fetches.
 """
 
+import ipaddress
 import logging
+import socket
 import time
 from datetime import datetime, timezone
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
 
 import feedparser
+import requests
 import trafilatura
 import yaml
-from trafilatura.settings import use_config
 
 from tiltmeter import db
 
@@ -60,10 +62,9 @@ FETCH_DELAY_SECONDS = 0.2
 # Outlets that block us (e.g. paywalled WaPo) time out; cap the wait so one
 # blocked outlet can't stall a whole ingest run. Headline+summary still land.
 FETCH_TIMEOUT_SECONDS = 10
-
-_FETCH_CONFIG = use_config()
-_FETCH_CONFIG.set("DEFAULT", "DOWNLOAD_TIMEOUT", str(FETCH_TIMEOUT_SECONDS))
-_FETCH_CONFIG.set("DEFAULT", "USER_AGENTS", USER_AGENT)
+# A feed entry's <link> is untrusted input. Cap manual redirect-following so a
+# chain can't loop forever, and re-check the host at each hop (see below).
+MAX_ARTICLE_REDIRECTS = 5
 
 
 def load_outlets(config_path: str) -> list[dict]:
@@ -73,12 +74,61 @@ def load_outlets(config_path: str) -> list[dict]:
     return cfg["outlets"]
 
 
+def _reject_unroutable_host(host: str) -> None:
+    """Refuse a host that resolves anywhere non-public.
+
+    A feed is an outside party's input; its <link> could point at an
+    internal address (cloud metadata, LAN service) to make us fetch it on
+    the feed owner's behalf. Reject by resolved address, not by hostname
+    pattern, since e.g. "localhost" is only one of many spellings.
+    """
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except socket.gaierror as exc:
+        raise ValueError(f"cannot resolve {host!r}: {exc}") from None
+    for info in infos:
+        ip = ipaddress.ip_address(info[4][0])
+        if (
+            ip.is_private
+            or ip.is_loopback
+            or ip.is_link_local
+            or ip.is_reserved
+            or ip.is_multicast
+            or ip.is_unspecified
+        ):
+            raise ValueError(f"refusing to fetch {host!r}: resolves to {ip} (non-public)")
+
+
 def fetch_article_text(url: str) -> str | None:
-    """Download one article page and extract its readable text."""
-    html = trafilatura.fetch_url(url, config=_FETCH_CONFIG)
-    if html is None:
-        return None
-    return trafilatura.extract(html, include_comments=False, include_tables=False)
+    """Download one article page and extract its readable text.
+
+    Redirects are followed by hand, capped, and re-validated one hop at a
+    time: an automatic redirect follower (trafilatura's, requests', any
+    HTTP client's) would let a feed entry pass the host check and then
+    bounce us to a private address on the next hop.
+    """
+    for _ in range(MAX_ARTICLE_REDIRECTS + 1):
+        host = urlsplit(url).hostname
+        if not host:
+            return None
+        _reject_unroutable_host(host)
+        resp = requests.get(
+            url,
+            headers={"User-Agent": USER_AGENT},
+            timeout=FETCH_TIMEOUT_SECONDS,
+            allow_redirects=False,
+        )
+        if resp.is_redirect:
+            location = resp.headers.get("Location")
+            if not location:
+                return None
+            url = urljoin(url, location)
+            continue
+        if resp.status_code != 200:
+            return None
+        return trafilatura.extract(resp.content, include_comments=False, include_tables=False)
+    log.warning("too many redirects fetching %s", url)
+    return None
 
 
 def ingest_outlet(conn, outlet: dict, *, fetch_text: bool = True) -> tuple[int, list[str]]:

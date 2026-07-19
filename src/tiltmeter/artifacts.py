@@ -11,6 +11,8 @@ servable by adding one line here.
 """
 
 import json
+import os
+import tempfile
 from pathlib import Path
 
 # kind -> filename prefix; API route name == kind
@@ -28,13 +30,23 @@ def artifact_path(out_dir: str | Path, kind: str, snapshot_id: str) -> Path:
 
 
 def write_json(path: str | Path, payload) -> Path:
-    """Deterministic serialization: same payload, same bytes, any machine."""
+    """Deterministic serialization: same payload, same bytes, any machine.
+
+    Written to a temp file in the same directory and swapped into place with
+    os.replace, so serve.py — a separate process reading the same releases
+    volume — can never observe a partially written or truncated file.
+    """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(payload, indent=1, sort_keys=True, ensure_ascii=False, default=str) + "\n",
-        encoding="utf-8",
-    )
+    data = json.dumps(payload, indent=1, sort_keys=True, ensure_ascii=False, default=str) + "\n"
+    fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(data)
+        os.replace(tmp_name, path)
+    except BaseException:
+        os.unlink(tmp_name)
+        raise
     return path
 
 

@@ -5,6 +5,8 @@ by the live cron run; what must never regress silently is the storage
 contract: one row per URL, stable fingerprints, accurate per-outlet counts.
 """
 
+import pytest
+
 from tiltmeter import db
 
 
@@ -70,3 +72,49 @@ def test_counts_group_by_outlet():
             text="x",
         )
     assert db.outlet_counts(conn) == [("left-times", 2), ("right-post", 1)]
+
+
+def test_reject_unroutable_host_blocks_private_and_link_local_ranges():
+    from tiltmeter.ingest import _reject_unroutable_host
+
+    # RFC1918, loopback, link-local (incl. the cloud metadata address), and
+    # their IPv6 equivalents — a compromised feed pointing <link> here must
+    # never be fetched.
+    for host in (
+        "127.0.0.1", "169.254.169.254", "10.1.2.3", "192.168.1.1", "172.16.0.5",
+        "::1", "fc00::1", "fe80::1",
+    ):
+        with pytest.raises(ValueError, match="non-public"):
+            _reject_unroutable_host(host)
+
+
+def test_reject_unroutable_host_allows_public_addresses():
+    from tiltmeter.ingest import _reject_unroutable_host
+
+    _reject_unroutable_host("8.8.8.8")  # a literal IP needs no DNS lookup
+
+
+def test_fetch_article_text_refuses_private_target_before_any_request(monkeypatch):
+    """The host check must run before the network call, not after."""
+    from tiltmeter import ingest
+
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("must not contact the network for a private-IP link")
+
+    monkeypatch.setattr(ingest.requests, "get", fail_if_called)
+    with pytest.raises(ValueError, match="non-public"):
+        ingest.fetch_article_text("http://127.0.0.1:9/admin")
+
+
+def test_fetch_article_text_revalidates_host_on_redirect(monkeypatch):
+    """A redirect to a private address must be rejected, not followed."""
+    from tiltmeter import ingest
+
+    class FakeResponse:
+        status_code = 302
+        is_redirect = True
+        headers = {"Location": "http://169.254.169.254/latest/meta-data/"}
+
+    monkeypatch.setattr(ingest.requests, "get", lambda *a, **k: FakeResponse())
+    with pytest.raises(ValueError, match="non-public"):
+        ingest.fetch_article_text("https://example.com/story")

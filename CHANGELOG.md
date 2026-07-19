@@ -8,6 +8,23 @@ requires a version bump and, if it changes methodology, a decision record in
 
 ## [Unreleased]
 
+### Fixed
+
+- `__version__` had drifted from `pyproject.toml` (stuck at 0.8.2 through the
+  0.8.3 release), so every ratings/manifest artifact produced since then was
+  stamped with the wrong `pipeline_version`. Bumped to match, and added a
+  regression test pinning the two together.
+- `fetch_article_text` fetched whatever URL a feed's `<link>` contained, with
+  no check on where that URL actually pointed — a compromised or malicious
+  feed could aim it at an internal address (cloud metadata, LAN service) and
+  have us fetch it on the feed owner's behalf (SSRF). The host, and every
+  redirect hop, is now resolved and rejected if it lands on a private,
+  loopback, link-local, or otherwise non-public address.
+- `artifacts.write_json` wrote the target path in place, so a reader on the
+  same releases volume (serve.py, a separate process) could observe a
+  partially written or truncated artifact mid-write. It now writes to a temp
+  file in the same directory and swaps it into place with `os.replace`.
+
 ## [0.8.3] - 2026-07-19
 
 ### Fixed

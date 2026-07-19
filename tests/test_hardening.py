@@ -10,6 +10,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+import tiltmeter
 from tiltmeter import artifacts, db, embed, serve
 from tiltmeter.stats import spearman
 
@@ -235,6 +236,23 @@ def test_artifact_bytes_are_platform_pinned(tmp_path):
     assert p1.read_bytes().index(b'"a"') < p1.read_bytes().index(b'"z"')
 
 
+def test_write_json_atomic_never_leaves_a_partial_target(tmp_path, monkeypatch):
+    """A crash mid-write must never truncate the previous artifact in place —
+    serve.py reads this same file from a separate process, concurrently."""
+    target = tmp_path / "ratings-x.json"
+    artifacts.write_json(target, {"a": 1})
+    original = target.read_bytes()
+
+    def boom(*a, **k):
+        raise RuntimeError("simulated crash mid-write")
+
+    monkeypatch.setattr(artifacts.os, "replace", boom)
+    with pytest.raises(RuntimeError, match="simulated"):
+        artifacts.write_json(target, {"a": 2, "b": "x" * 1000})
+    assert target.read_bytes() == original, "target must be untouched until the atomic swap"
+    assert list(tmp_path.iterdir()) == [target], "a failed write must not leak a temp file"
+
+
 def test_embedding_cache_key_carries_model_revision():
     """A revision bump must miss the cache, never serve stale vectors."""
     assert embed.MODEL_REVISION in embed.CACHE_MODEL_KEY
@@ -248,6 +266,15 @@ def test_dockerfile_model_pins_match_code():
     revision = re.search(r"ARG EMBED_REVISION=(\S+)", dockerfile).group(1)
     assert name == embed.MODEL_NAME
     assert revision == embed.MODEL_REVISION
+
+
+def test_version_matches_pyproject():
+    """__version__ is stamped into every ratings/manifest as pipeline_version;
+    a pyproject bump that leaves it behind ships artifacts under the wrong
+    version."""
+    pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    version = re.search(r'(?m)^version = "([^"]+)"', pyproject).group(1)
+    assert tiltmeter.__version__ == version
 
 
 def test_serve_routes_cover_every_artifact_kind():

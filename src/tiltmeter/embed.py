@@ -40,8 +40,14 @@ def passage(title: str, text: str | None, summary: str | None) -> str:
 def _load_model():
     global _model
     if _model is None:
+        import torch
         from sentence_transformers import SentenceTransformer
 
+        # Pin CPU inference to one thread. torch's multi-threaded forward-pass
+        # kernel intermittently raised SIGILL under CPU contention on the
+        # deployment host, and multi-threaded reduction order is nondeterministic
+        # regardless; one thread is both crash-free and bit-reproducible (D1/D10).
+        torch.set_num_threads(1)
         _model = SentenceTransformer(MODEL_NAME, revision=MODEL_REVISION, device="cpu")
     return _model
 

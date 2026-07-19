@@ -8,6 +8,21 @@ requires a version bump and, if it changes methodology, a decision record in
 
 ## [Unreleased]
 
+## [0.8.3] - 2026-07-19
+
+### Fixed
+
+- Embedding no longer crashes under CPU contention. torch's multi-threaded
+  forward-pass kernel intermittently raised `Illegal instruction` (SIGILL) on
+  the deployment host when the collector's 6h cycle overlapped other load,
+  which the loop swallowed as non-fatal — so that cycle silently computed no
+  new embeddings. Inference is now pinned to one thread
+  (`torch.set_num_threads(1)`), which also removes multi-threaded reduction
+  nondeterminism, so newly computed vectors are bit-reproducible (D1/D10).
+  Cached vectors are untouched; a vector recomputed after this change may
+  differ from a pre-0.8.3 one at ~1e-6, which can move a borderline article
+  across the cluster threshold and thus shift a rating — hence the version bump.
+
 ## [0.8.2] - 2026-07-10
 
 Audit pass 3 (zero-confirmation over the pass-2 diff): 2 findings — one a

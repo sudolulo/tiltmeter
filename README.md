@@ -92,3 +92,8 @@ or dashboard at the API.
 
 Code: [MIT](LICENSE). Published ratings data: CC-BY-4.0. See [NOTICE](NOTICE) for
 development disclosure.
+
+## Support
+
+If tiltmeter is useful to you, consider supporting development via
+[GitHub Sponsors](https://github.com/sponsors/sudolulo) or [Ko-fi](https://ko-fi.com/sudolulo).

@@ -1,8 +1,6 @@
 # tiltmeter
 
-[![ci](https://github.com/sudolulo/tiltmeter/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/sudolulo/tiltmeter/actions) [![Python 3.13+](https://img.shields.io/badge/Python-3.13%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/) [![Code: MIT](https://img.shields.io/badge/Code-MIT-blue)](LICENSE) [![Data: CC BY 4.0](https://img.shields.io/badge/Data-CC_BY_4.0-lightgrey)](NOTICE) [![GitHub Sponsors](https://img.shields.io/badge/GitHub%20Sponsors-%E2%9D%A4-EA4AAA?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/sudolulo) [![Ko-fi](https://img.shields.io/badge/Ko--fi-support-FF5E5B?logo=kofi&logoColor=white)](https://ko-fi.com/sudolulo)
-
-**Auditable political-lean ratings for news outlets.** A tiltmeter is an instrument
+Auditable political-lean ratings for news outlets. A tiltmeter is an instrument
 that measures the tilt of the ground — this one measures the tilt of the news.
 
 Commercial bias raters (AllSides, Ad Fontes, Media Bias/Fact Check) sell outlet
@@ -11,7 +9,7 @@ tiltmeter is the opposite bet: ratings computed by open code from open data, whe
 every number can be re-derived, every methodology choice is cited to published
 research, and every score links to the actual headlines that produced it.
 
-**Do not trust us. Check.**
+Do not trust us — check.
 
 ## How it works (one paragraph)
 

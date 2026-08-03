@@ -1,5 +1,7 @@
 # tiltmeter
 
+[![GitHub Sponsors](https://img.shields.io/badge/GitHub%20Sponsors-%E2%9D%A4-EA4AAA?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/sudolulo) [![Ko-fi](https://img.shields.io/badge/Ko--fi-support-FF5E5B?logo=kofi&logoColor=white)](https://ko-fi.com/sudolulo)
+
 **Auditable political-lean ratings for news outlets.** A tiltmeter is an instrument
 that measures the tilt of the ground — this one measures the tilt of the news.
 

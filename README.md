@@ -1,5 +1,7 @@
 # tiltmeter
 
+[![CI](https://github.com/sudolulo/tiltmeter/actions/workflows/ci.yml/badge.svg)](https://github.com/sudolulo/tiltmeter/actions)
+
 Auditable political-lean ratings for news outlets. A tiltmeter is an instrument
 that measures the tilt of the ground — this one measures the tilt of the news.
 
